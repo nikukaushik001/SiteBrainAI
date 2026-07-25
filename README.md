@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/tandpfun/skill-icons/main/icons/React-Dark.svg" width="60" alt="BrainDesk Logo" />
+  <img src="./logo.svg" width="100" alt="BrainDesk Logo" />
   <h1 align="center">BrainDesk AI</h1>
   <p align="center"><strong>Enterprise Multi-Tenant RAG SaaS Platform</strong></p>
 
