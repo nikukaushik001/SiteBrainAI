@@ -4,43 +4,46 @@ import re
 from typing import Dict, Any
 
 def scrape_url(url: str) -> Dict[str, Any]:
-    """Fetches a web page URL, cleans HTML tags and navigation scripts, and extracts clean text content."""
+    """Fetches a web page URL, cleans HTML tags and scripts, and extracts clean text content."""
+    url = url.strip()
     if not url.startswith("http://") and not url.startswith("https://"):
         url = "https://" + url
 
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 DocsAuraBot/1.0"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
     }
 
     try:
-        response = requests.get(url, headers=headers, timeout=12)
+        response = requests.get(url, headers=headers, timeout=15, allow_redirects=True)
         response.raise_for_status()
 
         soup = BeautifulSoup(response.text, "html.parser")
 
-        # Remove script, style, nav, footer, header elements
-        for element in soup(["script", "style", "nav", "footer", "header", "noscript", "svg", "form"]):
+        # Remove non-content elements
+        for element in soup(["script", "style", "noscript", "svg", "iframe"]):
             element.decompose()
 
-        # Get page title
+        # Extract title
         title = soup.title.string.strip() if soup.title and soup.title.string else url
 
-        # Extract text from paragraphs, headings, list items, and main tags
-        text = ""
-        for tag in soup.find_all(["h1", "h2", "h3", "h4", "p", "li", "article", "section"]):
-            content = tag.get_text(separator=" ", strip=True)
-            if content and len(content) > 15: # Ignore tiny snippets
-                text += content + "\n\n"
+        # Extract lines using newline separator
+        raw_text = soup.get_text(separator="\n")
+        lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
 
-        # If tag extraction produced very little text, fallback to get_text()
-        if len(text.strip()) < 100:
-            text = soup.get_text(separator="\n", strip=True)
+        # Filter duplicates and tiny noise fragments
+        clean_lines = []
+        seen = set()
+        for line in lines:
+            if line not in seen and len(line) > 1:
+                seen.add(line)
+                clean_lines.append(line)
 
-        # Clean excessive newlines
-        clean_text = re.sub(r'\n{3,}', '\n\n', text).strip()
+        clean_text = "\n".join(clean_lines)
 
-        if not clean_text or len(clean_text) < 50:
-            return {"success": False, "error": "Could not extract sufficient text content from URL.", "url": url}
+        if not clean_text or len(clean_text) < 15:
+            return {"success": False, "error": f"Could not extract text content from {url}. Ensure the website is publicly accessible.", "url": url}
 
         return {
             "success": True,
@@ -49,5 +52,7 @@ def scrape_url(url: str) -> Dict[str, Any]:
             "content": clean_text
         }
 
+    except requests.exceptions.RequestException as req_err:
+        return {"success": False, "error": f"Network connection error: {str(req_err)}", "url": url}
     except Exception as e:
-        return {"success": False, "error": f"Failed to fetch URL: {str(e)}", "url": url}
+        return {"success": False, "error": f"Failed to fetch URL content: {str(e)}", "url": url}
