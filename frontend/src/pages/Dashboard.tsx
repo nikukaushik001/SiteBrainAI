@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import Logo from '../components/Logo';
 import '../App.css';
 
 interface Message {
@@ -29,8 +31,10 @@ interface AnalyticsData {
 }
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'overview' | 'playground' | 'documents' | 'analytics' | 'widget'>('overview');
   const [copied, setCopied] = useState(false);
+  const [userRole, setUserRole] = useState('client');
 
   // Projects / Multi-Tenant State (Persisted in localStorage)
   const initialProjects: Project[] = [
@@ -48,7 +52,7 @@ export default function Dashboard() {
 
   const [activeProjectId, setActiveProjectId] = useState<string>(() => {
     try {
-      const savedId = localStorage.getItem('docsaura_active_project');
+      const savedId = localStorage.getItem('braindesk_active_project');
       return savedId || 'default_workspace';
     } catch {
       return 'default_workspace';
@@ -56,9 +60,17 @@ export default function Dashboard() {
   });
 
   useEffect(() => {
+    const role = localStorage.getItem('userRole') || 'client';
+    setUserRole(role);
+    if (role === 'client') {
+      setActiveProjectId('proj_hireloop');
+    }
+  }, []);
+
+  useEffect(() => {
     try {
-      localStorage.setItem('docsaura_projects', JSON.stringify(projects));
-      localStorage.setItem('docsaura_active_project', activeProjectId);
+      localStorage.setItem('braindesk_projects', JSON.stringify(projects));
+      localStorage.setItem('braindesk_active_project', activeProjectId);
     } catch (e) {
       console.error(e);
     }
@@ -78,14 +90,14 @@ export default function Dashboard() {
   const [isResetting, setIsResetting] = useState(false);
 
   // Customizer State
-  const [botName, setBotName] = useState('DocsAura Assistant');
+  const [botName, setBotName] = useState('BrainDesk Assistant');
   const [primaryColor, setPrimaryColor] = useState('#6366f1');
   const [greetingMsg, setGreetingMsg] = useState('Hi! Welcome to our site. How can I help you today?');
   const [position, setPosition] = useState<'bottom-right' | 'bottom-left'>('bottom-right');
 
   // Playground Chat State
   const [playgroundMessages, setPlaygroundMessages] = useState<Message[]>([
-    { role: 'assistant', content: 'Hello! I am DocsAura AI. Ask me anything about this business.' }
+    { role: 'assistant', content: 'Hello! I am BrainDesk AI. Ask me anything about this business.' }
   ]);
   const [inputQuestion, setInputQuestion] = useState('');
   const [isThinking, setIsThinking] = useState(false);
@@ -154,6 +166,12 @@ export default function Dashboard() {
     const newProj = { id: projId, name: projName.trim() };
     setProjects(prev => [...prev, newProj]);
     setActiveProjectId(projId);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('isAuthenticated');
+    localStorage.removeItem('userRole');
+    navigate('/');
   };
 
   // Handle Clear Analytics Logs
@@ -287,7 +305,7 @@ export default function Dashboard() {
         setPlaygroundMessages(prev => [...prev, { role: 'assistant', content: data.answer }]);
         fetchAnalytics(activeProjectId);
       } else {
-        setPlaygroundMessages(prev => [...prev, { role: 'assistant', content: 'Error getting answer from DocsAura AI.' }]);
+        setPlaygroundMessages(prev => [...prev, { role: 'assistant', content: 'Error getting answer from BrainDesk AI.' }]);
       }
     } catch {
       setPlaygroundMessages(prev => [...prev, { role: 'assistant', content: 'Connection error. Ensure your FastAPI server is running.' }]);
@@ -298,37 +316,36 @@ export default function Dashboard() {
 
   return (
     <div className="dashboard-layout">
-      {/* Sidebar Navigation */}
+      {/* Sidebar */}
       <aside className="sidebar">
-        <div>
-          <div className="logo-container">
-            <div className="logo-icon">✨</div>
-            <div className="logo-text">DocsAuraAI</div>
-          </div>
+        <div className="sidebar-top-section">
+          <Logo size="small" style={{ marginBottom: '32px' }} />
 
-          {/* Project Selector Box */}
-          <div className="project-selector-box">
-            <div className="project-selector-label">
-              <span>Active Business Project</span>
-              <button
-                onClick={handleAddProject}
-                style={{ background: 'none', border: 'none', color: 'var(--accent-cyan)', fontSize: '11px', cursor: 'pointer', fontWeight: 700 }}
+          <nav className="nav-menu">
+          {/* Admin Project Selector Box */}
+          {userRole === 'admin' && (
+            <div className="project-selector-box">
+              <div className="project-selector-label">
+                ACTIVE BUSINESS PROJECT
+                <button 
+                  onClick={handleAddProject}
+                  className="btn-text" style={{ fontSize: '11px', color: 'var(--accent-cyan)', padding: 0, border: 'none', background: 'none', cursor: 'pointer' }}>
+                  + New Project
+                </button>
+              </div>
+              <select
+                className="project-select"
+                value={activeProjectId}
+                onChange={(e) => setActiveProjectId(e.target.value)}
               >
-                + New Project
-              </button>
+                {projects.map(p => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
             </div>
-            <select
-              className="project-select"
-              value={activeProjectId}
-              onChange={(e) => setActiveProjectId(e.target.value)}
-            >
-              {projects.map(p => (
-                <option key={p.id} value={p.id}>
-                  📁 {p.name} ({p.id})
-                </option>
-              ))}
-            </select>
-          </div>
+          )}
 
           <nav className="nav-links">
             <div
@@ -366,28 +383,47 @@ export default function Dashboard() {
               <span>⚙️</span> Widget Studio
             </div>
           </nav>
+        </nav>
         </div>
 
+        {/* Status / Footer */}
         <div className="sidebar-footer">
           <div className="status-badge">
             <span className="status-dot"></span>
-            DocsAura Backend: Online
+            BrainDesk Backend: Online
           </div>
         </div>
       </aside>
 
       {/* Main Content Area */}
       <main className="main-content">
+        {/* Topbar Header */}
+        <header className="topbar">
+          <div className="topbar-search">
+            <span>🔍</span>
+            <input type="text" placeholder={`Search across ${currentProject.name}...`} />
+          </div>
+          <div className="topbar-actions">
+            <button className="btn-secondary" style={{ padding: '8px 12px' }}>🔔</button>
+            <div className="topbar-avatar" title={userRole === 'admin' ? "Admin Account" : "Client Account"}>
+              {userRole === 'admin' ? 'AD' : 'CL'}
+            </div>
+            <button className="btn-danger" style={{ padding: '8px 12px', fontSize: '13px' }} onClick={handleLogout}>
+              Logout
+            </button>
+          </div>
+        </header>
 
-        {/* OVERVIEW TAB */}
-        {activeTab === 'overview' && (
-          <div className="animate-fade-in">
-            <header className="header">
-              <div>
-                <h1>Dashboard Overview</h1>
-                <p>Manage <strong>{currentProject.name}</strong> (Tenant ID: <code>{activeProjectId}</code>)</p>
-              </div>
-            </header>
+        <div className="main-scroll-area">
+          {/* OVERVIEW TAB */}
+          {activeTab === 'overview' && (
+            <div className="animate-fade-in">
+              <header className="header">
+                <div>
+                  <h1>Dashboard Overview</h1>
+                  <p>Workspace: <strong>{currentProject.name}</strong></p>
+                </div>
+              </header>
 
             <div className="stats-grid">
               <div className="stat-card glass-panel">
@@ -416,7 +452,7 @@ export default function Dashboard() {
             </div>
 
             <div className="glass-panel" style={{ padding: '32px', marginBottom: '32px' }}>
-              <h2 style={{ fontSize: '20px', marginBottom: '12px' }}>✨ DocsAura Multi-Tenant Guide</h2>
+              <h2 style={{ fontSize: '20px', marginBottom: '12px' }}>✨ BrainDesk Multi-Tenant Guide</h2>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginTop: '20px' }}>
                 <div style={{ background: 'rgba(255,255,255,0.03)', padding: '20px', borderRadius: '12px', border: '1px solid var(--border-subtle)' }}>
                   <div style={{ fontSize: '24px', marginBottom: '10px' }}>1️⃣</div>
@@ -467,7 +503,7 @@ export default function Dashboard() {
                 ))}
                 {isThinking && (
                   <div className="chat-bubble assistant" style={{ fontStyle: 'italic', opacity: 0.8 }}>
-                    DocsAura AI is retrieving {currentProject.name} documents & thinking...
+                    BrainDesk AI is retrieving {currentProject.name} documents & thinking...
                   </div>
                 )}
                 <div ref={chatBottomRef} />
@@ -495,7 +531,7 @@ export default function Dashboard() {
             <header className="header">
               <div>
                 <h1>Knowledge Base Management</h1>
-                <p>Upload PDFs or crawl website URLs for <strong>{currentProject.name}</strong> (Tenant ID: <code>{activeProjectId}</code>).</p>
+                <p>Upload PDFs or crawl website URLs for <strong>{currentProject.name}</strong>.</p>
               </div>
               <button className="btn-danger" onClick={handleResetBrain} disabled={isResetting}>
                 {isResetting ? "Resetting..." : `🗑️ Reset ${currentProject.name} Brain`}
@@ -587,7 +623,7 @@ export default function Dashboard() {
                   <div style={{ fontSize: '28px', fontWeight: '800', color: 'var(--accent-indigo)' }}>{dbStats.total_chunks}</div>
                 </div>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '14px', maxWidth: '450px' }}>
-                  DocsAura RAG searches both PDF documents and Crawled Website URLs tagged with <code>widget_id: "{activeProjectId}"</code>.
+                  BrainDesk RAG searches both PDF documents and Crawled Website URLs tagged with <code>widget_id: "{activeProjectId}"</code>.
                 </p>
               </div>
 
@@ -735,7 +771,7 @@ export default function Dashboard() {
             <header className="header">
               <div>
                 <h1>Widget Customization Studio</h1>
-                <p>Configure widget branding for <strong>{currentProject.name}</strong> (Tenant ID: <code>{activeProjectId}</code>)</p>
+                <p>Configure widget branding for <strong>{currentProject.name}</strong>.</p>
               </div>
             </header>
 
@@ -848,11 +884,10 @@ export default function Dashboard() {
               </div>
 
             </div>
-          </div>
-        )}
-
+            </div>
+          )}
+        </div>
       </main>
     </div>
   );
 }
-

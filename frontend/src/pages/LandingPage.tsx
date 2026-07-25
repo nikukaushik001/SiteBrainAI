@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import Logo from '../components/Logo';
 import '../App.css';
 
 export default function LandingPage() {
@@ -8,10 +9,7 @@ export default function LandingPage() {
     <div className="landing-layout">
       {/* Navbar */}
       <nav className="landing-nav">
-        <div className="logo-container">
-          <div className="logo-icon">✨</div>
-          <div className="logo-text">DocsAuraAI</div>
-        </div>
+        <Logo onClick={() => navigate('/')} />
         <div className="nav-actions">
           <button className="btn-secondary" onClick={() => navigate('/login')}>Login</button>
           <button className="btn-primary" onClick={() => navigate('/signup')}>Get Started</button>
@@ -22,11 +20,23 @@ export default function LandingPage() {
       <header className="hero-section">
         <div className="hero-content">
           <div className="aura-effect"></div>
-          <h1>Turn Your Website & Docs into an <span className="text-gradient">AI Support Agent</span> in Minutes</h1>
+          <div className="hero-badge">🚀 BrainDesk is Live</div>
+          <h1 className="hero-title">Turn Your Website & Docs into an <span className="text-gradient">AI Support Agent</span></h1>
           <p>Instantly crawl your website, upload your PDFs, and deploy a 24/7 intelligent RAG chatbot to your site. Zero coding required.</p>
           <div className="hero-buttons">
             <button className="btn-primary large" onClick={() => navigate('/signup')}>Start Your Free Trial</button>
             <button className="btn-secondary large" onClick={() => navigate('/login')}>See How It Works</button>
+          </div>
+        </div>
+        
+        {/* Trusted By Section (Social Proof) */}
+        <div className="trusted-by">
+          <p>TRUSTED BY INNOVATIVE TEAMS WORLDWIDE</p>
+          <div className="trusted-logos">
+            <span className="mock-logo">HireLoop Ai</span>
+            <span className="mock-logo">TechNova</span>
+            <span className="mock-logo">NexusCorp</span>
+            <span className="mock-logo">Acme SaaS</span>
           </div>
         </div>
       </header>
@@ -55,11 +65,8 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className="landing-footer">
-        <div className="logo-container" style={{ justifyContent: 'center', marginBottom: '20px' }}>
-          <div className="logo-icon">✨</div>
-          <div className="logo-text">DocsAuraAI</div>
-        </div>
-        <p>&copy; {new Date().getFullYear()} DocsAuraAI SaaS. All rights reserved.</p>
+        <Logo style={{ justifyContent: 'center', marginBottom: '20px' }} />
+        <p>&copy; {new Date().getFullYear()} BrainDesk SaaS. All rights reserved.</p>
       </footer>
     </div>
   );

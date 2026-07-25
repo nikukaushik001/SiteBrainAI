@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import Logo from '../components/Logo';
 import '../App.css';
 
 export default function AuthPage() {
@@ -18,8 +19,15 @@ export default function AuthPage() {
     // Simulate auth network request
     setTimeout(() => {
       setIsLoading(false);
-      // In a real app, we'd save the token here.
-      // For now, just navigate to the dashboard!
+      
+      // MOCK RBAC LOGIC:
+      // If email contains 'admin', they are the platform owner (sees all projects).
+      // Otherwise, they are a specific client (sees only their project).
+      const userRole = email.toLowerCase().includes('admin') ? 'admin' : 'client';
+      
+      localStorage.setItem('isAuthenticated', 'true');
+      localStorage.setItem('userRole', userRole);
+      
       navigate('/dashboard');
     }, 1000);
   };
@@ -27,14 +35,15 @@ export default function AuthPage() {
   return (
     <div className="auth-layout">
       <div className="auth-container glass-panel">
-        <div className="logo-container" style={{ justifyContent: 'center', marginBottom: '24px' }}>
-          <div className="logo-icon">✨</div>
-          <div className="logo-text">DocsAuraAI</div>
-        </div>
+        <Logo onClick={() => navigate('/')} style={{ justifyContent: 'center', marginBottom: '24px' }} />
         
         <h2>{isLogin ? 'Welcome Back' : 'Create Your Account'}</h2>
         <p style={{ color: 'var(--text-secondary)', marginBottom: '32px', textAlign: 'center' }}>
           {isLogin ? 'Sign in to manage your AI agents.' : 'Start your 14-day free trial. No credit card required.'}
+          <br/>
+          <span style={{ fontSize: '12px', color: 'var(--accent-cyan)' }}>
+            <strong>Demo:</strong> Type 'admin' in email for Platform Admin access.
+          </span>
         </p>
 
         <form onSubmit={handleSubmit} className="auth-form">
