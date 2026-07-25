@@ -9,7 +9,8 @@ interface Message {
 function App() {
   const [activeTab, setActiveTab] = useState<'overview' | 'playground' | 'documents' | 'widget'>('overview');
   const [copied, setCopied] = useState(false);
-  const [dbStats, setDbStats] = useState<{ total_chunks: number, status: string }>({ total_chunks: 0, status: 'connecting' });
+  const [dbStats, setDbStats] = useState<{ total_chunks: number, documents?: string[], status: string }>({ total_chunks: 0, documents: [], status: 'connecting' });
+
   const [isResetting, setIsResetting] = useState(false);
   
   // Customizer State
@@ -361,19 +362,37 @@ function App() {
             </div>
 
             <div className="glass-panel" style={{ padding: '28px' }}>
-              <h3 style={{ fontSize: '18px', marginBottom: '16px' }}>📊 Database Chunk Status</h3>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+              <h3 style={{ fontSize: '18px', marginBottom: '16px' }}>📊 Database & Active Trained Documents</h3>
+              
+              <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '24px' }}>
                 <div style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid var(--accent-indigo)', padding: '16px 24px', borderRadius: '12px' }}>
                   <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>TOTAL INDEXED VECTOR CHUNKS</div>
                   <div style={{ fontSize: '28px', fontWeight: '800', color: 'var(--accent-indigo)' }}>{dbStats.total_chunks}</div>
                 </div>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '14px', maxWidth: '400px' }}>
-                  Your uploaded PDFs are chunked into 1,000-character segments and vectorized locally in ChromaDB for instant vector search.
+                <p style={{ color: 'var(--text-secondary)', fontSize: '14px', maxWidth: '450px' }}>
+                  ChromaDB combines vector embeddings from all your uploaded files. To remove old sample data and train strictly on your new file, click <strong>Reset Vector Brain</strong> above.
                 </p>
               </div>
+
+              {dbStats.documents && dbStats.documents.length > 0 && (
+                <div>
+                  <h4 style={{ fontSize: '14px', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '12px', letterSpacing: '0.5px' }}>
+                    📁 Active Knowledge Base Files ({dbStats.documents.length}):
+                  </h4>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                    {dbStats.documents.map((doc, idx) => (
+                      <div key={idx} style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-active)', padding: '10px 16px', borderRadius: '8px', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span>📄</span> <strong>{doc}</strong>
+                        <span style={{ fontSize: '11px', background: 'rgba(16,185,129,0.2)', color: 'var(--accent-emerald)', padding: '2px 6px', borderRadius: '4px' }}>Indexed</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
+
 
         {/* WIDGET STUDIO & CUSTOMIZER TAB */}
         {activeTab === 'widget' && (

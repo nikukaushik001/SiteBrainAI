@@ -100,20 +100,36 @@ def embed_pdf(pdf_path: str) -> dict:
         chunks = text_splitter.split_text(text)
         
         print(f"Adding {len(chunks)} chunks to Chroma DB...")
-        vectorstore.add_texts(texts=chunks)
+        filename = os.path.basename(pdf_path)
+        metadatas = [{"source": filename} for _ in chunks]
+        vectorstore.add_texts(texts=chunks, metadatas=metadatas)
         
-        return {"success": True, "chunks_added": len(chunks)}
+        return {"success": True, "chunks_added": len(chunks), "filename": filename}
     except Exception as e:
         print(f"Error processing PDF: {e}")
         return {"success": False, "error": str(e)}
 
+def get_active_documents() -> list:
+    """Returns unique document names stored in ChromaDB."""
+    try:
+        data = vectorstore._collection.get(include=["metadatas"])
+        metas = data.get("metadatas", [])
+        sources = set()
+        for m in metas:
+            if m and isinstance(m, dict) and "source" in m:
+                sources.add(m["source"])
+        return list(sources)
+    except Exception:
+        return []
+
 def get_db_stats() -> dict:
-    """Returns vector store collection stats."""
+    """Returns vector store collection stats and active document sources."""
     try:
         count = vectorstore._collection.count()
-        return {"status": "ok", "total_chunks": count}
+        docs = get_active_documents()
+        return {"status": "ok", "total_chunks": count, "documents": docs}
     except Exception as e:
-        return {"status": "error", "total_chunks": 0, "error": str(e)}
+        return {"status": "error", "total_chunks": 0, "documents": [], "error": str(e)}
 
 def reset_vectorstore() -> dict:
     """Resets/deletes all vectors in the vector store."""
@@ -136,4 +152,5 @@ def reset_vectorstore() -> dict:
         return {"success": True, "message": "Knowledge base vector store successfully reset."}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
 
