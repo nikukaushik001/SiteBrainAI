@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import List, Optional
-from app.ai_service import ask_question, embed_pdf, get_db_stats, reset_vectorstore
+from app.ai_service import ask_question, embed_pdf, embed_url, get_db_stats, reset_vectorstore
 from app.analytics_service import log_query, get_analytics, clear_analytics
 import os
 import shutil
@@ -32,6 +32,10 @@ class ChatRequest(BaseModel):
     question: str
     widget_id: Optional[str] = "default"
     history: Optional[List[ChatMessage]] = []
+
+class ScrapeRequest(BaseModel):
+    url: str
+    widget_id: Optional[str] = "default"
 
 @app.get("/")
 def read_root():
@@ -76,6 +80,22 @@ def chat_endpoint(request: ChatRequest):
         
     return {"answer": answer, "widget_id": widget_id, "is_unanswered": log_entry.get("is_unanswered") if log_entry else False}
 
+@app.post("/scrape")
+def scrape_endpoint(request: ScrapeRequest):
+    if not request.url or not request.url.strip():
+        raise HTTPException(status_code=400, detail="Website URL is required.")
+        
+    result = embed_url(url=request.url.strip(), widget_id=request.widget_id or "default")
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Failed to scrape and embed URL"))
+        
+    return {
+        "status": "success", 
+        "message": f"Successfully scraped '{result.get('title', result['source'])}' and added {result['chunks_added']} chunks to DocsAuraAI brain.", 
+        "widget_id": request.widget_id,
+        "source": result["source"]
+    }
+
 @app.post("/upload")
 async def upload_document(file: UploadFile = File(...), widget_id: Optional[str] = "default"):
     if not file.filename.endswith('.pdf'):
@@ -102,6 +122,7 @@ async def upload_document(file: UploadFile = File(...), widget_id: Optional[str]
         return {"status": "success", "message": f"Successfully processed {file.filename} and added {result['chunks_added']} chunks to your DocsAuraAI brain (Tenant: {widget_id}).", "widget_id": widget_id}
     else:
         raise HTTPException(status_code=500, detail=result.get("error", "Unknown error occurred"))
+
 
 
 

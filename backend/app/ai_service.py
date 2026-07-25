@@ -111,13 +111,49 @@ def embed_pdf(pdf_path: str, widget_id: str = "default") -> dict:
         
         print(f"Adding {len(chunks)} chunks to Chroma DB for tenant '{widget_id}'...")
         filename = os.path.basename(pdf_path)
-        metadatas = [{"source": filename, "widget_id": widget_id} for _ in chunks]
+        metadatas = [{"source": filename, "widget_id": widget_id, "type": "pdf"} for _ in chunks]
         vectorstore.add_texts(texts=chunks, metadatas=metadatas)
         
         return {"success": True, "chunks_added": len(chunks), "filename": filename, "widget_id": widget_id}
     except Exception as e:
         print(f"Error processing PDF: {e}")
         return {"success": False, "error": str(e)}
+
+def embed_url(url: str, widget_id: str = "default") -> dict:
+    """Crawls a web page URL, chunks its text, and adds to ChromaDB with widget_id metadata."""
+    from app.web_scraper import scrape_url
+    print(f"Scraping & embedding URL: {url} (Widget ID: {widget_id})")
+    scraped = scrape_url(url)
+    if not scraped.get("success"):
+        return scraped
+        
+    text = scraped.get("content", "")
+    title = scraped.get("title", url)
+    clean_url = scraped.get("url", url)
+    
+    try:
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000,
+            chunk_overlap=200,
+            length_function=len,
+        )
+        chunks = text_splitter.split_text(text)
+        
+        print(f"Adding {len(chunks)} web chunks to Chroma DB for tenant '{widget_id}'...")
+        metadatas = [{"source": clean_url, "title": title, "widget_id": widget_id, "type": "web"} for _ in chunks]
+        vectorstore.add_texts(texts=chunks, metadatas=metadatas)
+        
+        return {
+            "success": True, 
+            "chunks_added": len(chunks), 
+            "source": clean_url, 
+            "title": title,
+            "widget_id": widget_id
+        }
+    except Exception as e:
+        print(f"Error embedding URL: {e}")
+        return {"success": False, "error": str(e)}
+
 
 def get_active_documents(widget_id: str = "default") -> list:
     """Returns unique document names stored in ChromaDB for a specific widget_id."""

@@ -64,14 +64,20 @@ function App() {
   const [inputQuestion, setInputQuestion] = useState('');
   const [isThinking, setIsThinking] = useState(false);
 
-  // Upload State
+  // Upload & Scraping State
   const [uploadStatus, setUploadStatus] = useState<{ status: 'idle' | 'uploading' | 'success' | 'error', message: string }>({
+    status: 'idle',
+    message: ''
+  });
+  const [inputUrl, setInputUrl] = useState('');
+  const [scrapeStatus, setScrapeStatus] = useState<{ status: 'idle' | 'scraping' | 'success' | 'error', message: string }>({
     status: 'idle',
     message: ''
   });
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
+
 
   const API_URL = "http://127.0.0.1:8000";
 
@@ -185,6 +191,34 @@ function App() {
     
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
+
+  // Handle Web URL Crawling
+  const handleUrlScrape = async () => {
+    if (!inputUrl.trim()) return;
+
+    setScrapeStatus({ status: 'scraping', message: `Crawling website ${inputUrl}...` });
+
+    try {
+      const response = await fetch(`${API_URL}/scrape`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: inputUrl.trim(), widget_id: activeProjectId })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setScrapeStatus({ status: 'success', message: data.message });
+        setInputUrl('');
+        fetchStats(activeProjectId);
+      } else {
+        setScrapeStatus({ status: 'error', message: data.detail || 'Scraping failed.' });
+      }
+    } catch {
+      setScrapeStatus({ status: 'error', message: 'Failed to connect to the backend server.' });
+    }
+  };
+
 
   // Handle Vector DB Reset for Active Tenant
   const handleResetBrain = async () => {
@@ -435,77 +469,131 @@ function App() {
             <header className="header">
               <div>
                 <h1>Knowledge Base Management</h1>
-                <p>Upload PDFs for <strong>{currentProject.name}</strong>. Vectors are tagged with Tenant ID <code>{activeProjectId}</code>.</p>
+                <p>Upload PDFs or crawl website URLs for <strong>{currentProject.name}</strong> (Tenant ID: <code>{activeProjectId}</code>).</p>
               </div>
               <button className="btn-danger" onClick={handleResetBrain} disabled={isResetting}>
                 {isResetting ? "Resetting..." : `🗑️ Reset ${currentProject.name} Brain`}
               </button>
             </header>
 
-            <div className="upload-section glass-panel" style={{ padding: '36px', marginBottom: '32px' }}>
-              <div 
-                className="upload-dropzone" 
-                onClick={() => fileInputRef.current?.click()}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  if (e.dataTransfer.files?.[0]) handleFileUpload(e.dataTransfer.files[0]);
-                }}
-              >
-                <div className="upload-icon">📄</div>
-                <h3 style={{ fontSize: '20px', marginBottom: '8px' }}>Drop PDF files for {currentProject.name}</h3>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Supports menus, FAQs, policies, and handbooks up to 50MB.</p>
-                <input 
-                  type="file" 
-                  accept="application/pdf"
-                  ref={fileInputRef}
-                  style={{ display: 'none' }}
-                  onChange={(e) => handleFileUpload(e.target.files?.[0])}
-                />
+            {/* Ingestion Options Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '32px' }}>
+              {/* PDF Uploader */}
+              <div className="glass-panel" style={{ padding: '28px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                <div>
+                  <h3 style={{ fontSize: '18px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>📄</span> PDF Document Upload
+                  </h3>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '20px' }}>
+                    Upload employee handbooks, pricing PDFs, menus, or FAQs.
+                  </p>
+
+                  <div 
+                    className="upload-dropzone" 
+                    onClick={() => fileInputRef.current?.click()}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      if (e.dataTransfer.files?.[0]) handleFileUpload(e.dataTransfer.files[0]);
+                    }}
+                    style={{ padding: '36px 20px' }}
+                  >
+                    <div className="upload-icon" style={{ fontSize: '36px' }}>📄</div>
+                    <h4 style={{ fontSize: '16px', marginBottom: '6px' }}>Drop PDF file here</h4>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>Click or drag PDF up to 50MB</p>
+                    <input 
+                      type="file" 
+                      accept="application/pdf"
+                      ref={fileInputRef}
+                      style={{ display: 'none' }}
+                      onChange={(e) => handleFileUpload(e.target.files?.[0])}
+                    />
+                  </div>
+                </div>
+
+                {uploadStatus.status !== 'idle' && (
+                  <div className={`upload-status ${uploadStatus.status}`} style={{ marginTop: '16px', fontSize: '13px' }}>
+                    <p>{uploadStatus.message}</p>
+                  </div>
+                )}
               </div>
 
-              {uploadStatus.status !== 'idle' && (
-                <div className={`upload-status ${uploadStatus.status}`}>
-                  <p>{uploadStatus.message}</p>
+              {/* Web URL Crawler */}
+              <div className="glass-panel" style={{ padding: '28px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                <div>
+                  <h3 style={{ fontSize: '18px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>🌐</span> Web URL Scraper & Crawler
+                  </h3>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '20px' }}>
+                    Type any website link to scrape live web text automatically into ChromaDB.
+                  </p>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. https://mybusiness.com/faq"
+                      value={inputUrl}
+                      onChange={(e) => setInputUrl(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleUrlScrape()}
+                      style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)', borderRadius: '8px', padding: '12px 14px', color: '#fff', fontSize: '14px', outline: 'none' }}
+                    />
+                    <button className="btn-primary" onClick={handleUrlScrape} disabled={scrapeStatus.status === 'scraping'}>
+                      {scrapeStatus.status === 'scraping' ? "Crawling Web Page..." : "🌐 Crawl & Index Website"}
+                    </button>
+                  </div>
                 </div>
-              )}
+
+                {scrapeStatus.status !== 'idle' && (
+                  <div className={`upload-status ${scrapeStatus.status}`} style={{ marginTop: '16px', fontSize: '13px' }}>
+                    <p>{scrapeStatus.message}</p>
+                  </div>
+                )}
+              </div>
             </div>
 
+            {/* Active Documents & Database Status */}
             <div className="glass-panel" style={{ padding: '28px' }}>
-              <h3 style={{ fontSize: '18px', marginBottom: '16px' }}>📊 Database Chunks & Active Files ({currentProject.name})</h3>
+              <h3 style={{ fontSize: '18px', marginBottom: '16px' }}>📊 Active Knowledge Sources ({currentProject.name})</h3>
               
               <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '24px' }}>
                 <div style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid var(--accent-indigo)', padding: '16px 24px', borderRadius: '12px' }}>
-                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>TOTAL CHUNKS ({activeProjectId})</div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>TOTAL INDEXED CHUNKS ({activeProjectId})</div>
                   <div style={{ fontSize: '28px', fontWeight: '800', color: 'var(--accent-indigo)' }}>{dbStats.total_chunks}</div>
                 </div>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '14px', maxWidth: '450px' }}>
-                  ChromaDB filters retrieval using <code>filter={"{"}widget_id: "{activeProjectId}"{"}"}</code>. Data uploaded here is completely isolated from other projects.
+                  DocsAura RAG searches both PDF documents and Crawled Website URLs tagged with <code>widget_id: "{activeProjectId}"</code>.
                 </p>
               </div>
 
               {dbStats.documents && dbStats.documents.length > 0 ? (
                 <div>
                   <h4 style={{ fontSize: '14px', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '12px', letterSpacing: '0.5px' }}>
-                    📁 Active Knowledge Files for {currentProject.name} ({dbStats.documents.length}):
+                    📁 Active Knowledge Files & URLs ({dbStats.documents.length}):
                   </h4>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-                    {dbStats.documents.map((doc, idx) => (
-                      <div key={idx} style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-active)', padding: '10px 16px', borderRadius: '8px', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span>📄</span> <strong>{doc}</strong>
-                        <span style={{ fontSize: '11px', background: 'rgba(16,185,129,0.2)', color: 'var(--accent-emerald)', padding: '2px 6px', borderRadius: '4px' }}>Indexed</span>
-                      </div>
-                    ))}
+                    {dbStats.documents.map((doc, idx) => {
+                      const isWeb = doc.startsWith("http://") || doc.startsWith("https://");
+                      return (
+                        <div key={idx} style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-active)', padding: '10px 16px', borderRadius: '8px', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px', maxWidth: '100%', overflow: 'hidden' }}>
+                          <span>{isWeb ? "🌐" : "📄"}</span> 
+                          <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '300px' }}>{doc}</strong>
+                          <span style={{ fontSize: '11px', background: isWeb ? 'rgba(6,182,212,0.2)' : 'rgba(16,185,129,0.2)', color: isWeb ? 'var(--accent-cyan)' : 'var(--accent-emerald)', padding: '2px 6px', borderRadius: '4px' }}>
+                            {isWeb ? "Web URL" : "PDF File"}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               ) : (
                 <div style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', color: 'var(--text-muted)', fontSize: '14px' }}>
-                  No documents uploaded for <strong>{currentProject.name}</strong> yet. Upload a PDF above to populate this project's brain!
+                  No documents or URLs indexed for <strong>{currentProject.name}</strong> yet. Upload a PDF or Crawl a Website URL above to populate your AI brain!
                 </div>
               )}
             </div>
           </div>
         )}
+
 
         {/* ANALYTICS & INSIGHTS TAB */}
         {activeTab === 'analytics' && (
