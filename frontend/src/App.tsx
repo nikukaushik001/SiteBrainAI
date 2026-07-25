@@ -34,8 +34,7 @@ function App() {
 
   // Projects / Multi-Tenant State (Persisted in localStorage)
   const initialProjects: Project[] = [
-    { id: 'proj_hireloop', name: 'HireLoop AI' },
-    { id: 'default_workspace', name: 'Main Business Workspace' }
+    { id: 'default_workspace', name: 'My Workspace' }
   ];
 
   const [projects, setProjects] = useState<Project[]>(() => {
@@ -50,9 +49,9 @@ function App() {
   const [activeProjectId, setActiveProjectId] = useState<string>(() => {
     try {
       const savedId = localStorage.getItem('docsaura_active_project');
-      return savedId || 'proj_hireloop';
+      return savedId || 'default_workspace';
     } catch {
-      return 'proj_hireloop';
+      return 'default_workspace';
     }
   });
 
@@ -64,6 +63,7 @@ function App() {
       console.error(e);
     }
   }, [projects, activeProjectId]);
+
 
 
   const [dbStats, setDbStats] = useState<{ total_chunks: number, documents?: string[], status: string }>({ total_chunks: 0, documents: [], status: 'connecting' });
