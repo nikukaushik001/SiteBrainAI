@@ -1,0 +1,174 @@
+/* sitebrain-widget.css */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+
+#sitebrain-widget-container {
+    font-family: 'Inter', sans-serif;
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 999999;
+}
+
+/* Chat Button */
+#sitebrain-chat-btn {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #6366f1, #a855f7);
+    color: white;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+#sitebrain-chat-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
+}
+
+#sitebrain-chat-btn svg {
+    width: 28px;
+    height: 28px;
+    fill: currentColor;
+}
+
+/* Chat Window */
+#sitebrain-chat-window {
+    position: absolute;
+    bottom: 80px;
+    right: 0;
+    width: 350px;
+    height: 500px;
+    background-color: #111827;
+    border-radius: 16px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    border: 1px solid #374151;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(20px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+#sitebrain-chat-window.sb-active {
+    opacity: 1;
+    pointer-events: all;
+    transform: translateY(0);
+}
+
+/* Header */
+.sb-header {
+    padding: 16px;
+    background-color: #1f2937;
+    border-bottom: 1px solid #374151;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: white;
+}
+
+.sb-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.sb-close-btn {
+    background: none;
+    border: none;
+    color: #9ca3af;
+    cursor: pointer;
+    font-size: 20px;
+    line-height: 1;
+}
+
+.sb-close-btn:hover {
+    color: white;
+}
+
+/* Messages Area */
+.sb-messages {
+    flex-grow: 1;
+    padding: 16px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    background-color: #111827;
+}
+
+.sb-message {
+    max-width: 85%;
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.sb-message.sb-ai {
+    background-color: #1f2937;
+    color: #e5e7eb;
+    align-self: flex-start;
+    border-bottom-left-radius: 4px;
+}
+
+.sb-message.sb-user {
+    background: linear-gradient(135deg, #6366f1, #a855f7);
+    color: white;
+    align-self: flex-end;
+    border-bottom-right-radius: 4px;
+}
+
+.sb-loading {
+    color: #9ca3af;
+    font-size: 12px;
+    font-style: italic;
+    align-self: flex-start;
+    display: none;
+}
+
+/* Input Area */
+.sb-input-area {
+    padding: 12px;
+    background-color: #1f2937;
+    border-top: 1px solid #374151;
+    display: flex;
+    gap: 8px;
+}
+
+.sb-input-area input {
+    flex-grow: 1;
+    background-color: #374151;
+    border: 1px solid #4b5563;
+    color: white;
+    padding: 10px 12px;
+    border-radius: 8px;
+    outline: none;
+    font-size: 14px;
+    font-family: inherit;
+}
+
+.sb-input-area input:focus {
+    border-color: #6366f1;
+}
+
+.sb-input-area button {
+    background-color: #6366f1;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 0 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.sb-input-area button:hover {
+    background-color: #4f46e5;
+}

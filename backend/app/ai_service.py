@@ -1,4 +1,5 @@
 import os
+import fitz
 from dotenv import load_dotenv
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -6,13 +7,12 @@ from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 # Load env variables
 load_dotenv()
 
 # We need the Chroma DB path
-# Since we run uvicorn from the backend/ directory, the path should be ./scripts/chroma_db if it was created there.
-# Let's use an absolute or relative path based on the project root.
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CHROMA_DB_DIR = os.path.join(BASE_DIR, "scripts", "chroma_db")
 
@@ -73,3 +73,63 @@ def ask_question(question: str) -> str:
         return response
     except Exception as e:
         return f"Sorry, I encountered an error: {e}"
+
+def embed_pdf(pdf_path: str) -> dict:
+    """Extracts text from a newly uploaded PDF, chunks it, and adds to ChromaDB."""
+    print(f"Extracting text from uploaded file: {pdf_path}")
+    text = ""
+    try:
+        doc = fitz.open(pdf_path)
+        for page_num in range(len(doc)):
+            text += doc[page_num].get_text()
+        doc.close()
+        
+        if not text.strip():
+            return {"success": False, "error": "No text found in PDF"}
+            
+        print("Chunking text...")
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000,
+            chunk_overlap=200,
+            length_function=len,
+        )
+        chunks = text_splitter.split_text(text)
+        
+        print(f"Adding {len(chunks)} chunks to Chroma DB...")
+        vectorstore.add_texts(texts=chunks)
+        
+        return {"success": True, "chunks_added": len(chunks)}
+    except Exception as e:
+        print(f"Error processing PDF: {e}")
+        return {"success": False, "error": str(e)}
+
+def get_db_stats() -> dict:
+    """Returns vector store collection stats."""
+    try:
+        count = vectorstore._collection.count()
+        return {"status": "ok", "total_chunks": count}
+    except Exception as e:
+        return {"status": "error", "total_chunks": 0, "error": str(e)}
+
+def reset_vectorstore() -> dict:
+    """Resets/deletes all vectors in the vector store."""
+    global vectorstore, retriever, rag_chain
+    try:
+        # Delete collection content
+        vectorstore.delete_collection()
+        # Re-initialize collection
+        vectorstore = Chroma(
+            persist_directory=CHROMA_DB_DIR,
+            embedding_function=embeddings_model
+        )
+        retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
+        rag_chain = (
+            {"context": retriever | format_docs, "question": RunnablePassthrough()}
+            | prompt
+            | llm
+            | StrOutputParser()
+        )
+        return {"success": True, "message": "Knowledge base vector store successfully reset."}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+

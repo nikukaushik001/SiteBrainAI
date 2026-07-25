@@ -10,3 +10,4 @@ PyMuPDF
 python-dotenv
 langchain-text-splitters
 langchain-community
+python-multipart
