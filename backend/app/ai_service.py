@@ -67,20 +67,30 @@ rag_chain = (
     | StrOutputParser()
 )
 
-def ask_question(question: str) -> str:
-    """Invokes the RAG chain with the given question."""
+def ask_question(question: str, widget_id: str = "default") -> str:
+    """Invokes the RAG chain with retriever filtered by widget_id."""
     if not os.getenv("GROQ_API_KEY") or os.getenv("GROQ_API_KEY") == "your_groq_api_key_here":
         return "System Error: GROQ_API_KEY is missing or invalid in the .env file."
         
     try:
-        response = rag_chain.invoke(question)
+        # Dynamically create filtered retriever for the specific widget_id tenant
+        search_filter = {"widget_id": widget_id} if widget_id and widget_id != "all" else {}
+        tenant_retriever = vectorstore.as_retriever(search_kwargs={"k": 3, "filter": search_filter} if search_filter else {"k": 3})
+        
+        tenant_rag_chain = (
+            {"context": tenant_retriever | format_docs, "question": RunnablePassthrough()}
+            | prompt
+            | llm
+            | StrOutputParser()
+        )
+        response = tenant_rag_chain.invoke(question)
         return response
     except Exception as e:
         return f"Sorry, I encountered an error: {e}"
 
-def embed_pdf(pdf_path: str) -> dict:
-    """Extracts text from a newly uploaded PDF, chunks it, and adds to ChromaDB."""
-    print(f"Extracting text from uploaded file: {pdf_path}")
+def embed_pdf(pdf_path: str, widget_id: str = "default") -> dict:
+    """Extracts text from a newly uploaded PDF, chunks it with widget_id metadata, and adds to ChromaDB."""
+    print(f"Extracting text from uploaded file: {pdf_path} (Widget ID: {widget_id})")
     text = ""
     try:
         doc = fitz.open(pdf_path)
@@ -99,49 +109,68 @@ def embed_pdf(pdf_path: str) -> dict:
         )
         chunks = text_splitter.split_text(text)
         
-        print(f"Adding {len(chunks)} chunks to Chroma DB...")
+        print(f"Adding {len(chunks)} chunks to Chroma DB for tenant '{widget_id}'...")
         filename = os.path.basename(pdf_path)
-        metadatas = [{"source": filename} for _ in chunks]
+        metadatas = [{"source": filename, "widget_id": widget_id} for _ in chunks]
         vectorstore.add_texts(texts=chunks, metadatas=metadatas)
         
-        return {"success": True, "chunks_added": len(chunks), "filename": filename}
+        return {"success": True, "chunks_added": len(chunks), "filename": filename, "widget_id": widget_id}
     except Exception as e:
         print(f"Error processing PDF: {e}")
         return {"success": False, "error": str(e)}
 
-def get_active_documents() -> list:
-    """Returns unique document names stored in ChromaDB."""
+def get_active_documents(widget_id: str = "default") -> list:
+    """Returns unique document names stored in ChromaDB for a specific widget_id."""
     try:
         data = vectorstore._collection.get(include=["metadatas"])
         metas = data.get("metadatas", [])
         sources = set()
         for m in metas:
             if m and isinstance(m, dict) and "source" in m:
-                sources.add(m["source"])
+                # If widget_id is specified, filter by it
+                if not widget_id or widget_id == "all" or m.get("widget_id") == widget_id or ("widget_id" not in m and widget_id == "default"):
+                    sources.add(m["source"])
         return list(sources)
     except Exception:
         return []
 
-def get_db_stats() -> dict:
-    """Returns vector store collection stats and active document sources."""
+def get_db_stats(widget_id: str = "default") -> dict:
+    """Returns vector store collection stats and active document sources for a tenant."""
     try:
-        count = vectorstore._collection.count()
-        docs = get_active_documents()
-        return {"status": "ok", "total_chunks": count, "documents": docs}
+        data = vectorstore._collection.get(include=["metadatas"])
+        metas = data.get("metadatas", [])
+        matching_chunks = 0
+        for m in metas:
+            if not widget_id or widget_id == "all" or (isinstance(m, dict) and m.get("widget_id") == widget_id) or (isinstance(m, dict) and "widget_id" not in m and widget_id == "default"):
+                matching_chunks += 1
+
+        docs = get_active_documents(widget_id)
+        return {"status": "ok", "total_chunks": matching_chunks, "documents": docs, "widget_id": widget_id}
     except Exception as e:
         return {"status": "error", "total_chunks": 0, "documents": [], "error": str(e)}
 
-def reset_vectorstore() -> dict:
-    """Resets/deletes all vectors in the vector store."""
+def reset_vectorstore(widget_id: str = "default") -> dict:
+    """Resets/deletes vectors in the vector store belonging to a specific widget_id."""
     global vectorstore, retriever, rag_chain
     try:
-        # Delete collection content
-        vectorstore.delete_collection()
-        # Re-initialize collection
-        vectorstore = Chroma(
-            persist_directory=CHROMA_DB_DIR,
-            embedding_function=embeddings_model
-        )
+        if not widget_id or widget_id == "all":
+            vectorstore.delete_collection()
+            vectorstore = Chroma(
+                persist_directory=CHROMA_DB_DIR,
+                embedding_function=embeddings_model
+            )
+        else:
+            # Delete entries matching widget_id metadata
+            data = vectorstore._collection.get(include=["metadatas"])
+            ids_to_delete = []
+            metas = data.get("metadatas", [])
+            ids = data.get("ids", [])
+            for i, m in enumerate(metas):
+                if isinstance(m, dict) and (m.get("widget_id") == widget_id or ("widget_id" not in m and widget_id == "default")):
+                    ids_to_delete.append(ids[i])
+            if ids_to_delete:
+                vectorstore.delete(ids=ids_to_delete)
+
         retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
         rag_chain = (
             {"context": retriever | format_docs, "question": RunnablePassthrough()}
@@ -149,8 +178,9 @@ def reset_vectorstore() -> dict:
             | llm
             | StrOutputParser()
         )
-        return {"success": True, "message": "Knowledge base vector store successfully reset."}
+        return {"success": True, "message": f"Knowledge base for '{widget_id}' successfully reset."}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
 
 

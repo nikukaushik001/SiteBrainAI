@@ -1,7 +1,8 @@
 (function() {
     // Read dataset options from current script element
     const currentScript = document.currentScript || document.querySelector('script[src*="sitebrain-widget.js"]');
-    const botName = (currentScript && currentScript.dataset.botName) || "AI Assistant";
+    const botName = (currentScript && currentScript.dataset.botName) || "DocsAura AI";
+    const widgetId = (currentScript && currentScript.dataset.widgetId) || "default";
     const primaryColor = (currentScript && currentScript.dataset.color) || "#6366f1";
     const greetingMsg = (currentScript && currentScript.dataset.greeting) || "Hi there! How can I help you today?";
     const position = (currentScript && currentScript.dataset.position) || "bottom-right";
@@ -9,6 +10,7 @@
     // Determine the host where the backend is running
     const API_URL = "http://127.0.0.1:8000/chat";
     const CSS_URL = "http://127.0.0.1:8000/static/sitebrain-widget.css";
+
 
     // 1. Inject the CSS
     const link = document.createElement("link");
@@ -89,8 +91,9 @@
                 headers: {
                     "Content-Type": "application/json"
                 },
-                body: JSON.stringify({ question: text })
+                body: JSON.stringify({ question: text, widget_id: widgetId })
             });
+
 
             if (!response.ok) throw new Error("API Error");
 

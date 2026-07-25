@@ -6,22 +6,35 @@ interface Message {
   content: string;
 }
 
+interface Project {
+  id: string;
+  name: string;
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState<'overview' | 'playground' | 'documents' | 'widget'>('overview');
   const [copied, setCopied] = useState(false);
-  const [dbStats, setDbStats] = useState<{ total_chunks: number, documents?: string[], status: string }>({ total_chunks: 0, documents: [], status: 'connecting' });
+  
+  // Projects / Multi-Tenant State
+  const [projects, setProjects] = useState<Project[]>([
+    { id: 'sb_flex_gym', name: 'Flex Gym' },
+    { id: 'sb_acme_dental', name: 'Acme Dental' },
+    { id: 'default', name: 'Default Business' }
+  ]);
+  const [activeProjectId, setActiveProjectId] = useState<string>('sb_flex_gym');
 
+  const [dbStats, setDbStats] = useState<{ total_chunks: number, documents?: string[], status: string }>({ total_chunks: 0, documents: [], status: 'connecting' });
   const [isResetting, setIsResetting] = useState(false);
   
   // Customizer State
-  const [botName, setBotName] = useState('SiteBrain Assistant');
+  const [botName, setBotName] = useState('DocsAura Assistant');
   const [primaryColor, setPrimaryColor] = useState('#6366f1');
-  const [greetingMsg, setGreetingMsg] = useState('Hi! How can I help you today?');
+  const [greetingMsg, setGreetingMsg] = useState('Hi! Welcome to our site. How can I help you today?');
   const [position, setPosition] = useState<'bottom-right' | 'bottom-left'>('bottom-right');
 
   // Playground Chat State
   const [playgroundMessages, setPlaygroundMessages] = useState<Message[]>([
-    { role: 'assistant', content: 'Hello! I am your SiteBrain AI. Ask me anything based on your uploaded documents.' }
+    { role: 'assistant', content: 'Hello! I am DocsAura AI. Ask me anything about this business.' }
   ]);
   const [inputQuestion, setInputQuestion] = useState('');
   const [isThinking, setIsThinking] = useState(false);
@@ -37,30 +50,45 @@ function App() {
 
   const API_URL = "http://127.0.0.1:8000";
 
-  // Fetch vector stats on load
-  const fetchStats = async () => {
+  // Active Project Helper
+  const currentProject = projects.find(p => p.id === activeProjectId) || projects[0];
+
+  // Fetch vector stats on load or project switch
+  const fetchStats = async (widgetId: string) => {
     try {
-      const res = await fetch(`${API_URL}/stats`);
+      const res = await fetch(`${API_URL}/stats?widget_id=${widgetId}`);
       if (res.ok) {
         const data = await res.json();
         setDbStats(data);
       }
     } catch {
-      setDbStats({ total_chunks: 0, status: 'offline' });
+      setDbStats({ total_chunks: 0, documents: [], status: 'offline' });
     }
   };
 
   useEffect(() => {
-    fetchStats();
-  }, []);
+    fetchStats(activeProjectId);
+  }, [activeProjectId]);
 
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [playgroundMessages, isThinking]);
 
+  // Handle New Project Creation
+  const handleAddProject = () => {
+    const projName = window.prompt("Enter new Business/Project Name:");
+    if (!projName || !projName.trim()) return;
+
+    const projId = `sb_${projName.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${Date.now().toString().slice(-4)}`;
+    const newProj = { id: projId, name: projName.trim() };
+    setProjects(prev => [...prev, newProj]);
+    setActiveProjectId(projId);
+  };
+
   // Handle Dynamic Embed Script Code
   const widgetCode = `<script 
   src="${API_URL}/static/sitebrain-widget.js" 
+  data-widget-id="${activeProjectId}"
   data-bot-name="${botName}" 
   data-color="${primaryColor}" 
   data-greeting="${greetingMsg}" 
@@ -73,7 +101,7 @@ function App() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Handle PDF Upload
+  // Handle PDF Upload for Active Tenant
   const handleFileUpload = async (file: File | undefined) => {
     if (!file) return;
 
@@ -82,13 +110,13 @@ function App() {
       return;
     }
 
-    setUploadStatus({ status: 'uploading', message: `Uploading and chunking ${file.name}...` });
+    setUploadStatus({ status: 'uploading', message: `Uploading ${file.name} for ${currentProject.name}...` });
 
     const formData = new FormData();
     formData.append("file", file);
 
     try {
-      const response = await fetch(`${API_URL}/upload`, {
+      const response = await fetch(`${API_URL}/upload?widget_id=${activeProjectId}`, {
         method: "POST",
         body: formData,
       });
@@ -97,7 +125,7 @@ function App() {
 
       if (response.ok) {
         setUploadStatus({ status: 'success', message: data.message });
-        fetchStats();
+        fetchStats(activeProjectId);
       } else {
         setUploadStatus({ status: 'error', message: data.detail || 'Upload failed.' });
       }
@@ -108,17 +136,17 @@ function App() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  // Handle Vector DB Reset
+  // Handle Vector DB Reset for Active Tenant
   const handleResetBrain = async () => {
-    if (!window.confirm("Are you sure you want to reset your AI's Knowledge Base? All indexed chunks will be cleared.")) return;
+    if (!window.confirm(`Are you sure you want to reset the Knowledge Base for '${currentProject.name}'? Only vectors for this business will be cleared.`)) return;
 
     setIsResetting(true);
     try {
-      const res = await fetch(`${API_URL}/reset`, { method: "POST" });
+      const res = await fetch(`${API_URL}/reset?widget_id=${activeProjectId}`, { method: "POST" });
       const data = await res.json();
       if (res.ok) {
-        alert("Knowledge Base vector database reset successfully!");
-        fetchStats();
+        alert(`Knowledge Base for '${currentProject.name}' reset successfully!`);
+        fetchStats(activeProjectId);
       } else {
         alert("Error resetting database: " + data.detail);
       }
@@ -142,13 +170,13 @@ function App() {
       const res = await fetch(`${API_URL}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: userMsg })
+        body: JSON.stringify({ question: userMsg, widget_id: activeProjectId })
       });
       const data = await res.json();
       if (res.ok) {
         setPlaygroundMessages(prev => [...prev, { role: 'assistant', content: data.answer }]);
       } else {
-        setPlaygroundMessages(prev => [...prev, { role: 'assistant', content: 'Error getting answer from AI backend.' }]);
+        setPlaygroundMessages(prev => [...prev, { role: 'assistant', content: 'Error getting answer from DocsAura AI.' }]);
       }
     } catch {
       setPlaygroundMessages(prev => [...prev, { role: 'assistant', content: 'Connection error. Ensure your FastAPI server is running.' }]);
@@ -163,8 +191,32 @@ function App() {
       <aside className="sidebar">
         <div>
           <div className="logo-container">
-            <div className="logo-icon">SB</div>
-            <div className="logo-text">SiteBrainAI</div>
+            <div className="logo-icon">✨</div>
+            <div className="logo-text">DocsAuraAI</div>
+          </div>
+
+          {/* Project Selector Box */}
+          <div className="project-selector-box">
+            <div className="project-selector-label">
+              <span>Active Business Project</span>
+              <button 
+                onClick={handleAddProject} 
+                style={{ background: 'none', border: 'none', color: 'var(--accent-cyan)', fontSize: '11px', cursor: 'pointer', fontWeight: 700 }}
+              >
+                + New Project
+              </button>
+            </div>
+            <select 
+              className="project-select"
+              value={activeProjectId}
+              onChange={(e) => setActiveProjectId(e.target.value)}
+            >
+              {projects.map(p => (
+                <option key={p.id} value={p.id}>
+                  📁 {p.name} ({p.id})
+                </option>
+              ))}
+            </select>
           </div>
           
           <nav className="nav-links">
@@ -201,7 +253,7 @@ function App() {
         <div className="sidebar-footer">
           <div className="status-badge">
             <span className="status-dot"></span>
-            Backend: FastAPI Online
+            DocsAura Backend: Online
           </div>
         </div>
       </aside>
@@ -215,7 +267,7 @@ function App() {
             <header className="header">
               <div>
                 <h1>Dashboard Overview</h1>
-                <p>Monitor your RAG AI Assistant knowledge base & integration health.</p>
+                <p>Manage <strong>{currentProject.name}</strong> (Tenant ID: <code>{activeProjectId}</code>)</p>
               </div>
             </header>
 
@@ -237,33 +289,33 @@ function App() {
               </div>
 
               <div className="stat-card glass-panel">
-                <div className="stat-icon" style={{ color: '#06b6d4' }}>📦</div>
+                <div className="stat-icon" style={{ color: '#06b6d4' }}>🔐</div>
                 <div className="stat-info">
-                  <h4>Vector Store</h4>
-                  <div className="stat-value" style={{ fontSize: '18px' }}>ChromaDB</div>
+                  <h4>Multi-Tenant Mode</h4>
+                  <div className="stat-value" style={{ fontSize: '18px' }}>Isolated</div>
                 </div>
               </div>
             </div>
 
             <div className="glass-panel" style={{ padding: '32px', marginBottom: '32px' }}>
-              <h2 style={{ fontSize: '20px', marginBottom: '12px' }}>🚀 Quick Getting Started Guide</h2>
+              <h2 style={{ fontSize: '20px', marginBottom: '12px' }}>✨ DocsAura Multi-Tenant Guide</h2>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginTop: '20px' }}>
                 <div style={{ background: 'rgba(255,255,255,0.03)', padding: '20px', borderRadius: '12px', border: '1px solid var(--border-subtle)' }}>
                   <div style={{ fontSize: '24px', marginBottom: '10px' }}>1️⃣</div>
-                  <h4 style={{ marginBottom: '6px' }}>Upload Business Docs</h4>
-                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Go to Knowledge Base and upload PDFs (handbooks, FAQs, menus).</p>
+                  <h4 style={{ marginBottom: '6px' }}>Select or Create Project</h4>
+                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Use the sidebar dropdown to switch between business clients or add new ones.</p>
                 </div>
 
                 <div style={{ background: 'rgba(255,255,255,0.03)', padding: '20px', borderRadius: '12px', border: '1px solid var(--border-subtle)' }}>
                   <div style={{ fontSize: '24px', marginBottom: '10px' }}>2️⃣</div>
-                  <h4 style={{ marginBottom: '6px' }}>Test in Playground</h4>
-                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Ask questions in the AI Playground to verify accurate doc responses.</p>
+                  <h4 style={{ marginBottom: '6px' }}>Upload Dedicated Docs</h4>
+                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Upload PDFs for {currentProject.name}. All vector data is isolated under <code>{activeProjectId}</code>.</p>
                 </div>
 
                 <div style={{ background: 'rgba(255,255,255,0.03)', padding: '20px', borderRadius: '12px', border: '1px solid var(--border-subtle)' }}>
                   <div style={{ fontSize: '24px', marginBottom: '10px' }}>3️⃣</div>
-                  <h4 style={{ marginBottom: '6px' }}>Embed on Site</h4>
-                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Customize colors & copy the 1-line script tag to launch your site widget!</p>
+                  <h4 style={{ marginBottom: '6px' }}>Generate Client Widget</h4>
+                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Copy the script snippet containing <code>data-widget-id="{activeProjectId}"</code> for site embedding.</p>
                 </div>
               </div>
             </div>
@@ -276,16 +328,16 @@ function App() {
             <header className="header">
               <div>
                 <h1>AI Chat Playground</h1>
-                <p>Test your trained RAG AI Assistant live directly inside the dashboard.</p>
+                <p>Test <strong>{currentProject.name}</strong> AI responses live inside the dashboard sandbox.</p>
               </div>
-              <button className="btn-secondary" onClick={() => setPlaygroundMessages([{ role: 'assistant', content: 'Chat history cleared. How can I help you?' }])}>
+              <button className="btn-secondary" onClick={() => setPlaygroundMessages([{ role: 'assistant', content: `Chat cleared for ${currentProject.name}. How can I help?` }])}>
                 🧹 Clear Chat
               </button>
             </header>
 
             <div className="playground-container glass-panel">
               <div className="playground-header">
-                <h3><span>🧠</span> {botName} (Live Test Mode)</h3>
+                <h3><span>✨</span> {botName} ({currentProject.name})</h3>
                 <span className="status-badge"><span className="status-dot"></span> Ready</span>
               </div>
 
@@ -297,7 +349,7 @@ function App() {
                 ))}
                 {isThinking && (
                   <div className="chat-bubble assistant" style={{ fontStyle: 'italic', opacity: 0.8 }}>
-                    SiteBrain AI is retrieving documents & thinking...
+                    DocsAura AI is retrieving {currentProject.name} documents & thinking...
                   </div>
                 )}
                 <div ref={chatBottomRef} />
@@ -306,7 +358,7 @@ function App() {
               <div className="chat-input-row">
                 <input 
                   type="text" 
-                  placeholder="Ask a question about your uploaded documents..." 
+                  placeholder={`Ask a question about ${currentProject.name}...`}
                   value={inputQuestion}
                   onChange={(e) => setInputQuestion(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSendQuestion()}
@@ -325,10 +377,10 @@ function App() {
             <header className="header">
               <div>
                 <h1>Knowledge Base Management</h1>
-                <p>Upload PDFs to train your AI. ChromaDB will chunk and index your content automatically.</p>
+                <p>Upload PDFs for <strong>{currentProject.name}</strong>. Vectors are tagged with Tenant ID <code>{activeProjectId}</code>.</p>
               </div>
               <button className="btn-danger" onClick={handleResetBrain} disabled={isResetting}>
-                {isResetting ? "Resetting..." : "🗑️ Reset Vector Brain"}
+                {isResetting ? "Resetting..." : `🗑️ Reset ${currentProject.name} Brain`}
               </button>
             </header>
 
@@ -343,8 +395,8 @@ function App() {
                 }}
               >
                 <div className="upload-icon">📄</div>
-                <h3 style={{ fontSize: '20px', marginBottom: '8px' }}>Drop PDF files here or Click to Upload</h3>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Supports menus, FAQs, policies, and documentation PDFs up to 50MB.</p>
+                <h3 style={{ fontSize: '20px', marginBottom: '8px' }}>Drop PDF files for {currentProject.name}</h3>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Supports menus, FAQs, policies, and handbooks up to 50MB.</p>
                 <input 
                   type="file" 
                   accept="application/pdf"
@@ -362,22 +414,22 @@ function App() {
             </div>
 
             <div className="glass-panel" style={{ padding: '28px' }}>
-              <h3 style={{ fontSize: '18px', marginBottom: '16px' }}>📊 Database & Active Trained Documents</h3>
+              <h3 style={{ fontSize: '18px', marginBottom: '16px' }}>📊 Database Chunks & Active Files ({currentProject.name})</h3>
               
               <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '24px' }}>
                 <div style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid var(--accent-indigo)', padding: '16px 24px', borderRadius: '12px' }}>
-                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>TOTAL INDEXED VECTOR CHUNKS</div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>TOTAL CHUNKS ({activeProjectId})</div>
                   <div style={{ fontSize: '28px', fontWeight: '800', color: 'var(--accent-indigo)' }}>{dbStats.total_chunks}</div>
                 </div>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '14px', maxWidth: '450px' }}>
-                  ChromaDB combines vector embeddings from all your uploaded files. To remove old sample data and train strictly on your new file, click <strong>Reset Vector Brain</strong> above.
+                  ChromaDB filters retrieval using <code>filter={"{"}widget_id: "{activeProjectId}"{"}"}</code>. Data uploaded here is completely isolated from other projects.
                 </p>
               </div>
 
-              {dbStats.documents && dbStats.documents.length > 0 && (
+              {dbStats.documents && dbStats.documents.length > 0 ? (
                 <div>
                   <h4 style={{ fontSize: '14px', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '12px', letterSpacing: '0.5px' }}>
-                    📁 Active Knowledge Base Files ({dbStats.documents.length}):
+                    📁 Active Knowledge Files for {currentProject.name} ({dbStats.documents.length}):
                   </h4>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
                     {dbStats.documents.map((doc, idx) => (
@@ -388,11 +440,14 @@ function App() {
                     ))}
                   </div>
                 </div>
+              ) : (
+                <div style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', color: 'var(--text-muted)', fontSize: '14px' }}>
+                  No documents uploaded for <strong>{currentProject.name}</strong> yet. Upload a PDF above to populate this project's brain!
+                </div>
               )}
             </div>
           </div>
         )}
-
 
         {/* WIDGET STUDIO & CUSTOMIZER TAB */}
         {activeTab === 'widget' && (
@@ -400,7 +455,7 @@ function App() {
             <header className="header">
               <div>
                 <h1>Widget Customization Studio</h1>
-                <p>Personalize your widget appearance and copy your 1-line website snippet tag.</p>
+                <p>Configure widget branding for <strong>{currentProject.name}</strong> (Tenant ID: <code>{activeProjectId}</code>)</p>
               </div>
             </header>
 
@@ -457,7 +512,7 @@ function App() {
                 <div className="glass-panel" style={{ padding: '28px' }}>
                   <h3 style={{ fontSize: '18px', marginBottom: '12px' }}>📋 HTML Embed Code</h3>
                   <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '16px' }}>
-                    Paste this snippet before the closing <code>&lt;/body&gt;</code> tag on HTML, Wordpress, Shopify, or Wix sites:
+                    Paste this snippet before the closing <code>&lt;/body&gt;</code> tag on {currentProject.name}'s website:
                   </p>
                   
                   <div className="code-box">
@@ -474,7 +529,7 @@ function App() {
               <div>
                 <div className="preview-box">
                   <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-secondary)', marginBottom: '12px' }}>
-                    👁️ LIVE WIDGET PREVIEW
+                    👁️ LIVE WIDGET PREVIEW ({currentProject.name})
                   </div>
                   
                   <div className="widget-mockup">
@@ -489,11 +544,11 @@ function App() {
                       </div>
 
                       <div className="chat-bubble user" style={{ fontSize: '13px', background: primaryColor, marginBottom: '12px', alignSelf: 'flex-end' }}>
-                        What are your working hours?
+                        What are your operating hours?
                       </div>
 
                       <div className="chat-bubble assistant" style={{ fontSize: '13px', background: 'var(--bg-tertiary)' }}>
-                        We are open Monday to Friday from 9 AM to 6 PM!
+                        We are open 7 days a week!
                       </div>
                     </div>
 

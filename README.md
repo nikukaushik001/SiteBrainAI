@@ -1,64 +1,66 @@
-# 🧠 SiteBrainAI (Docs-to-Agent SaaS)
+# ✨ DocsAuraAI (Enterprise Multi-Tenant RAG SaaS)
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-green)
 ![React](https://img.shields.io/badge/React-18.2-blue)
+![Architecture](https://img.shields.io/badge/Multi--Tenant-Isolated-purple)
 
-SiteBrainAI is a RAG (Retrieval-Augmented Generation) Chatbot SaaS. It allows business owners to upload their PDFs (like menus, FAQs, or employee handbooks) and generate a custom AI chat widget that they can embed directly onto their own websites.
+DocsAuraAI is an enterprise-grade RAG (Retrieval-Augmented Generation) Chatbot SaaS platform. It allows business owners and SaaS clients to upload PDF documents (like menus, FAQs, policies, or handbooks) and generate custom, brandable AI chat widgets that embed directly onto client websites with complete tenant data isolation.
 
-The AI strictly answers customer questions based *only* on the documents the business owner uploaded, preventing hallucinations.
+The AI strictly answers customer questions based *only* on the documents uploaded for that specific business (`widget_id`), completely preventing hallucinations and cross-tenant data leakage.
+
+---
+
+## 🌟 Key Features & Highlights
+
+- **✨ Futuristic Glassmorphic Dashboard**: Cyber-glowing UI built with React + Vite, custom scrollbars, and dynamic live preview.
+- **🔐 Multi-Tenant Data Isolation**: ChromaDB vector store filters embeddings strictly by `widget_id`.
+- **💬 Live AI Chat Playground**: Test business AI responses directly inside the dashboard.
+- **📄 Knowledge Base Management**: Active document tracking with `source` file metadata and 1-click tenant reset.
+- **🎨 Widget Customization Studio**: Customize Bot Title, Primary Brand Color, Welcome Greeting, and Screen Position.
+
+---
 
 ## 🚀 Tech Stack
 - **Backend:** Python, FastAPI
-- **AI & RAG:** LangChain, Groq (Llama 3.3), HuggingFace Embeddings
-- **Vector Database:** ChromaDB (Local, 100% Free & Open-Source)
-- **Frontend Dashboard:** React, Vite, Vanilla CSS
-- **Embeddable Widget:** Vanilla JavaScript
+- **AI & RAG:** LangChain, Groq (`llama-3.3-70b`), HuggingFace Embeddings (`all-MiniLM-L6-v2`)
+- **Vector Database:** ChromaDB (Local, 100% Open-Source Vector Storage with Metadata Filtering)
+- **Frontend Dashboard:** React, Vite TypeScript, Vanilla CSS (Glassmorphism design system)
+- **Embeddable Widget:** Vanilla JavaScript & CSS overlay script
 
-## 📁 Project Structure
-```text
-SiteBrainAI/
-├── backend/            # FastAPI Backend & RAG Logic
-│   ├── app/            # API Endpoints & AI Services
-│   └── scripts/        # Standalone scripts (PDF extraction, CLI chat tester)
-├── frontend/           # React Dashboard for Business Owners
-└── widget/             # The embeddable script for client websites
-```
+---
 
 ## 🛠️ Getting Started (Local Development)
 
 ### 1. Backend Setup
-Navigate to the backend directory and install the requirements:
+Navigate to the backend directory and install requirements:
 ```bash
 cd backend
 pip install -r requirements.txt
 ```
 
-Create a `.env` file inside the `backend/` folder and add your free Groq API key:
+Ensure your `.env` file inside `backend/` contains your Groq API key:
 ```env
 GROQ_API_KEY="your_groq_api_key_here"
 ```
 
-### 2. Generate Vector Embeddings
-Before running the API, you need to populate the database with a PDF document.
-```bash
-cd backend/scripts
-# Generates a dummy 'sample.pdf' for testing
-python generate_pdf.py 
-
-# Extracts text from sample.pdf and saves it to ChromaDB
-python process_pdf.py  
-```
-
-### 3. Run the Server & Test
-Start the FastAPI server:
+Start the FastAPI backend server:
 ```bash
 cd backend
 python -m uvicorn app.main:app --reload
 ```
-- **Swagger UI:** http://127.0.0.1:8000/docs
-- **CLI Tester:** You can also run `python scripts/test_chat.py` in a new terminal to chat with the AI directly from your command line!
+- **Swagger UI Docs:** http://127.0.0.1:8000/docs
+- **Health Check:** http://127.0.0.1:8000/health
 
-## 🤝 Contributing
-This project is part of a learning bootcamp and portfolio build. Contributions, issues, and feature requests are welcome!
+### 2. Frontend Dashboard Setup
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+---
+
+## 🤝 Contributing & License
+Part of an advanced AI SaaS portfolio build. Contributions and feature requests are welcome! (MIT License)
