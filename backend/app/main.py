@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import List, Optional
 from app.ai_service import ask_question, embed_pdf, get_db_stats, reset_vectorstore
+from app.analytics_service import log_query, get_analytics, clear_analytics
 import os
 import shutil
 
@@ -44,6 +45,15 @@ def health_check():
 def stats_endpoint(widget_id: Optional[str] = "default"):
     return get_db_stats(widget_id=widget_id)
 
+@app.get("/analytics")
+def analytics_endpoint(widget_id: Optional[str] = "default"):
+    return get_analytics(widget_id=widget_id or "default")
+
+@app.post("/analytics/clear")
+def clear_analytics_endpoint(widget_id: Optional[str] = "default"):
+    clear_analytics(widget_id=widget_id or "default")
+    return {"status": "success", "message": f"Analytics cleared for '{widget_id}'."}
+
 @app.post("/reset")
 def reset_endpoint(widget_id: Optional[str] = "default"):
     res = reset_vectorstore(widget_id=widget_id)
@@ -56,7 +66,15 @@ def chat_endpoint(request: ChatRequest):
     # Pass the question & widget_id tenant to our AI Service
     widget_id = request.widget_id or "default"
     answer = ask_question(request.question, widget_id=widget_id)
-    return {"answer": answer, "widget_id": widget_id}
+    
+    # Log query in analytics
+    try:
+        log_entry = log_query(widget_id=widget_id, question=request.question, answer=answer)
+    except Exception as e:
+        print(f"Error logging analytics query: {e}")
+        log_entry = None
+        
+    return {"answer": answer, "widget_id": widget_id, "is_unanswered": log_entry.get("is_unanswered") if log_entry else False}
 
 @app.post("/upload")
 async def upload_document(file: UploadFile = File(...), widget_id: Optional[str] = "default"):
@@ -84,5 +102,6 @@ async def upload_document(file: UploadFile = File(...), widget_id: Optional[str]
         return {"status": "success", "message": f"Successfully processed {file.filename} and added {result['chunks_added']} chunks to your DocsAuraAI brain (Tenant: {widget_id}).", "widget_id": widget_id}
     else:
         raise HTTPException(status_code=500, detail=result.get("error", "Unknown error occurred"))
+
 
 
