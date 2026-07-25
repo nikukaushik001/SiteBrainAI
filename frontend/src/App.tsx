@@ -31,14 +31,40 @@ interface AnalyticsData {
 function App() {
   const [activeTab, setActiveTab] = useState<'overview' | 'playground' | 'documents' | 'analytics' | 'widget'>('overview');
   const [copied, setCopied] = useState(false);
-  
-  // Projects / Multi-Tenant State
-  const [projects, setProjects] = useState<Project[]>([
-    { id: 'sb_flex_gym', name: 'Flex Gym' },
-    { id: 'sb_acme_dental', name: 'Acme Dental' },
-    { id: 'default', name: 'Default Business' }
-  ]);
-  const [activeProjectId, setActiveProjectId] = useState<string>('sb_flex_gym');
+
+  // Projects / Multi-Tenant State (Persisted in localStorage)
+  const initialProjects: Project[] = [
+    { id: 'proj_hireloop', name: 'HireLoop AI' },
+    { id: 'default_workspace', name: 'Main Business Workspace' }
+  ];
+
+  const [projects, setProjects] = useState<Project[]>(() => {
+    try {
+      const saved = localStorage.getItem('docsaura_projects');
+      return saved ? JSON.parse(saved) : initialProjects;
+    } catch {
+      return initialProjects;
+    }
+  });
+
+  const [activeProjectId, setActiveProjectId] = useState<string>(() => {
+    try {
+      const savedId = localStorage.getItem('docsaura_active_project');
+      return savedId || 'proj_hireloop';
+    } catch {
+      return 'proj_hireloop';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('docsaura_projects', JSON.stringify(projects));
+      localStorage.setItem('docsaura_active_project', activeProjectId);
+    } catch (e) {
+      console.error(e);
+    }
+  }, [projects, activeProjectId]);
+
 
   const [dbStats, setDbStats] = useState<{ total_chunks: number, documents?: string[], status: string }>({ total_chunks: 0, documents: [], status: 'connecting' });
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData>({
@@ -50,7 +76,7 @@ function App() {
     recent_logs: []
   });
   const [isResetting, setIsResetting] = useState(false);
-  
+
   // Customizer State
   const [botName, setBotName] = useState('DocsAura Assistant');
   const [primaryColor, setPrimaryColor] = useState('#6366f1');
@@ -74,7 +100,7 @@ function App() {
     status: 'idle',
     message: ''
   });
-  
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
@@ -188,7 +214,7 @@ function App() {
     } catch {
       setUploadStatus({ status: 'error', message: 'Failed to connect to the backend API server.' });
     }
-    
+
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -284,14 +310,14 @@ function App() {
           <div className="project-selector-box">
             <div className="project-selector-label">
               <span>Active Business Project</span>
-              <button 
-                onClick={handleAddProject} 
+              <button
+                onClick={handleAddProject}
                 style={{ background: 'none', border: 'none', color: 'var(--accent-cyan)', fontSize: '11px', cursor: 'pointer', fontWeight: 700 }}
               >
                 + New Project
               </button>
             </div>
-            <select 
+            <select
               className="project-select"
               value={activeProjectId}
               onChange={(e) => setActiveProjectId(e.target.value)}
@@ -303,37 +329,37 @@ function App() {
               ))}
             </select>
           </div>
-          
+
           <nav className="nav-links">
-            <div 
+            <div
               className={`nav-item ${activeTab === 'overview' ? 'active' : ''}`}
               onClick={() => setActiveTab('overview')}
             >
               <span>📊</span> Overview
             </div>
 
-            <div 
+            <div
               className={`nav-item ${activeTab === 'playground' ? 'active' : ''}`}
               onClick={() => setActiveTab('playground')}
             >
               <span>💬</span> AI Playground
             </div>
 
-            <div 
+            <div
               className={`nav-item ${activeTab === 'documents' ? 'active' : ''}`}
               onClick={() => setActiveTab('documents')}
             >
               <span>📄</span> Knowledge Base
             </div>
 
-            <div 
+            <div
               className={`nav-item ${activeTab === 'analytics' ? 'active' : ''}`}
               onClick={() => setActiveTab('analytics')}
             >
               <span>📈</span> Analytics & Insights
             </div>
 
-            <div 
+            <div
               className={`nav-item ${activeTab === 'widget' ? 'active' : ''}`}
               onClick={() => setActiveTab('widget')}
             >
@@ -352,7 +378,7 @@ function App() {
 
       {/* Main Content Area */}
       <main className="main-content">
-        
+
         {/* OVERVIEW TAB */}
         {activeTab === 'overview' && (
           <div className="animate-fade-in">
@@ -448,8 +474,8 @@ function App() {
               </div>
 
               <div className="chat-input-row">
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   placeholder={`Ask a question about ${currentProject.name}...`}
                   value={inputQuestion}
                   onChange={(e) => setInputQuestion(e.target.value)}
@@ -488,8 +514,8 @@ function App() {
                     Upload employee handbooks, pricing PDFs, menus, or FAQs.
                   </p>
 
-                  <div 
-                    className="upload-dropzone" 
+                  <div
+                    className="upload-dropzone"
                     onClick={() => fileInputRef.current?.click()}
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={(e) => {
@@ -501,8 +527,8 @@ function App() {
                     <div className="upload-icon" style={{ fontSize: '36px' }}>📄</div>
                     <h4 style={{ fontSize: '16px', marginBottom: '6px' }}>Drop PDF file here</h4>
                     <p style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>Click or drag PDF up to 50MB</p>
-                    <input 
-                      type="file" 
+                    <input
+                      type="file"
                       accept="application/pdf"
                       ref={fileInputRef}
                       style={{ display: 'none' }}
@@ -529,8 +555,8 @@ function App() {
                   </p>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       placeholder="e.g. https://mybusiness.com/faq"
                       value={inputUrl}
                       onChange={(e) => setInputUrl(e.target.value)}
@@ -554,7 +580,7 @@ function App() {
             {/* Active Documents & Database Status */}
             <div className="glass-panel" style={{ padding: '28px' }}>
               <h3 style={{ fontSize: '18px', marginBottom: '16px' }}>📊 Active Knowledge Sources ({currentProject.name})</h3>
-              
+
               <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '24px' }}>
                 <div style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid var(--accent-indigo)', padding: '16px 24px', borderRadius: '12px' }}>
                   <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>TOTAL INDEXED CHUNKS ({activeProjectId})</div>
@@ -575,7 +601,7 @@ function App() {
                       const isWeb = doc.startsWith("http://") || doc.startsWith("https://");
                       return (
                         <div key={idx} style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-active)', padding: '10px 16px', borderRadius: '8px', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px', maxWidth: '100%', overflow: 'hidden' }}>
-                          <span>{isWeb ? "🌐" : "📄"}</span> 
+                          <span>{isWeb ? "🌐" : "📄"}</span>
                           <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '300px' }}>{doc}</strong>
                           <span style={{ fontSize: '11px', background: isWeb ? 'rgba(6,182,212,0.2)' : 'rgba(16,185,129,0.2)', color: isWeb ? 'var(--accent-cyan)' : 'var(--accent-emerald)', padding: '2px 6px', borderRadius: '4px' }}>
                             {isWeb ? "Web URL" : "PDF File"}
@@ -667,7 +693,7 @@ function App() {
             {/* Conversation Log Feed */}
             <div className="glass-panel" style={{ padding: '28px' }}>
               <h3 style={{ fontSize: '18px', marginBottom: '16px' }}>📜 Recent Customer Conversation Logs</h3>
-              
+
               {analyticsData.recent_logs && analyticsData.recent_logs.length > 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '420px', overflowY: 'auto' }}>
                   {analyticsData.recent_logs.map(log => (
@@ -718,11 +744,11 @@ function App() {
               <div>
                 <div className="glass-panel" style={{ padding: '28px', marginBottom: '24px' }}>
                   <h3 style={{ fontSize: '18px', marginBottom: '20px' }}>🎨 Appearance & Branding</h3>
-                  
+
                   <div className="form-group">
                     <label>Bot Name</label>
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       value={botName}
                       onChange={(e) => setBotName(e.target.value)}
                     />
@@ -730,8 +756,8 @@ function App() {
 
                   <div className="form-group">
                     <label>Welcome Message</label>
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       value={greetingMsg}
                       onChange={(e) => setGreetingMsg(e.target.value)}
                     />
@@ -741,7 +767,7 @@ function App() {
                     <label>Primary Brand Accent Color</label>
                     <div className="color-options">
                       {['#6366f1', '#06b6d4', '#8b5cf6', '#ec4899', '#10b981', '#f59e0b'].map(color => (
-                        <div 
+                        <div
                           key={color}
                           className={`color-swatch ${primaryColor === color ? 'selected' : ''}`}
                           style={{ background: color }}
@@ -753,7 +779,7 @@ function App() {
 
                   <div className="form-group">
                     <label>Screen Position</label>
-                    <select 
+                    <select
                       value={position}
                       onChange={(e) => setPosition(e.target.value as 'bottom-right' | 'bottom-left')}
                     >
@@ -768,7 +794,7 @@ function App() {
                   <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '16px' }}>
                     Paste this snippet before the closing <code>&lt;/body&gt;</code> tag on {currentProject.name}'s website:
                   </p>
-                  
+
                   <div className="code-box">
                     {widgetCode}
                   </div>
@@ -785,7 +811,7 @@ function App() {
                   <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-secondary)', marginBottom: '12px' }}>
                     👁️ LIVE WIDGET PREVIEW ({currentProject.name})
                   </div>
-                  
+
                   <div className="widget-mockup">
                     <div className="widget-mockup-header" style={{ background: primaryColor }}>
                       <div>{botName}</div>
@@ -807,10 +833,10 @@ function App() {
                     </div>
 
                     <div style={{ padding: '12px', borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-secondary)', display: 'flex', gap: '8px' }}>
-                      <input 
-                        type="text" 
-                        readOnly 
-                        placeholder="Type a message..." 
+                      <input
+                        type="text"
+                        readOnly
+                        placeholder="Type a message..."
                         style={{ flex: 1, background: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)', borderRadius: '6px', padding: '8px 12px', color: '#fff', fontSize: '12px' }}
                       />
                       <button style={{ background: primaryColor, color: '#fff', padding: '8px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: '600' }}>

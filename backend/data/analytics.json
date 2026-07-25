@@ -1,5 +1,37 @@
 [
   {
+    "id": "q_1785006411800",
+    "widget_id": "sb_flex_gym",
+    "question": "Can u define we workflow as a HR to use hireloop'",
+    "answer": "As an HR, your workflow with HireLoop involves uploading resumes in bulk, letting the AI parse and rank candidates, and then scheduling interviews. You can also review, shortlist, and schedule interviews for recent applications through the Action Center. Additionally, you can create job posts, view candidate applications, and access interview evaluations and feedback.",
+    "is_unanswered": false,
+    "timestamp": "2026-07-26 00:36:51"
+  },
+  {
+    "id": "q_1785006366816",
+    "widget_id": "sb_flex_gym",
+    "question": "but i have claude for all the thing then what ??",
+    "answer": "I don't have that information. Please contact support.",
+    "is_unanswered": true,
+    "timestamp": "2026-07-26 00:36:06"
+  },
+  {
+    "id": "q_1785006348551",
+    "widget_id": "sb_flex_gym",
+    "question": "Why i use hireloop as HR",
+    "answer": "You can use HireLoop as an HR team to find the best candidates automatically. It eliminates manual resume screening and provides an end-to-end automated hiring process. Many forward-thinking HR teams are already using HireLoop AI to streamline their hiring process.",
+    "is_unanswered": false,
+    "timestamp": "2026-07-26 00:35:48"
+  },
+  {
+    "id": "q_1785006326672",
+    "widget_id": "sb_flex_gym",
+    "question": "what is HireLoop ai",
+    "answer": "HireLoop AI is a platform that eliminates manual resume screening by using AI to parse and rank candidates, allowing you to upload resumes in bulk, schedule interviews, and manage the hiring process in one seamless platform.",
+    "is_unanswered": false,
+    "timestamp": "2026-07-26 00:35:26"
+  },
+  {
     "id": "q_1785005470889",
     "widget_id": "sb_flex_gym",
     "question": "hello help in medicine",
