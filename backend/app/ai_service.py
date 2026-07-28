@@ -38,13 +38,15 @@ llm = ChatGroq(
     temperature=0.0
 )
 
-# Create the Prompt Template
-template = """You are a helpful and polite customer support assistant for a business.
+def get_prompt_template(system_prompt: str = None) -> ChatPromptTemplate:
+    base_instructions = system_prompt if system_prompt else """You are a helpful and polite customer support assistant for a business."""
+    
+    template = f"""{base_instructions}
 Your goal is to answer the user's question based strictly on the provided context.
 
-Context: {context}
+Context: {{context}}
 
-Question: {question}
+Question: {{question}}
 
 Instructions:
 - If the answer is not contained within the context, politely say "I don't have that information. Please contact support."
@@ -54,39 +56,37 @@ Instructions:
 
 Answer:
 """
-prompt = ChatPromptTemplate.from_template(template)
+    return ChatPromptTemplate.from_template(template)
 
 def format_docs(docs):
     return "\n\n".join(doc.page_content for doc in docs)
 
-# Create the RAG Chain
-rag_chain = (
-    {"context": retriever | format_docs, "question": RunnablePassthrough()}
-    | prompt
-    | llm
-    | StrOutputParser()
-)
-
-def ask_question(question: str, widget_id: str = "default") -> str:
-    """Invokes the RAG chain with retriever filtered by widget_id."""
+def ask_question(question: str, widget_id: str = "default", system_prompt: str = None) -> dict:
+    """Invokes the RAG chain with retriever filtered by widget_id, returning the answer and source citations."""
     if not os.getenv("GROQ_API_KEY") or os.getenv("GROQ_API_KEY") == "your_groq_api_key_here":
-        return "System Error: GROQ_API_KEY is missing or invalid in the .env file."
+        return {"answer": "System Error: GROQ_API_KEY is missing or invalid in the .env file.", "sources": []}
         
     try:
         # Dynamically create filtered retriever for the specific widget_id tenant
         search_filter = {"widget_id": widget_id} if widget_id and widget_id != "all" else {}
         tenant_retriever = vectorstore.as_retriever(search_kwargs={"k": 3, "filter": search_filter} if search_filter else {"k": 3})
         
+        # Retrieve context documents first to extract sources
+        docs = tenant_retriever.invoke(question) if hasattr(tenant_retriever, 'invoke') else tenant_retriever.get_relevant_documents(question)
+        sources = list(set([doc.metadata.get("source") for doc in docs if doc.metadata and "source" in doc.metadata]))
+        context_str = format_docs(docs)
+
+        dynamic_prompt = get_prompt_template(system_prompt)
+        
         tenant_rag_chain = (
-            {"context": tenant_retriever | format_docs, "question": RunnablePassthrough()}
-            | prompt
+            dynamic_prompt
             | llm
             | StrOutputParser()
         )
-        response = tenant_rag_chain.invoke(question)
-        return response
+        answer = tenant_rag_chain.invoke({"context": context_str, "question": question})
+        return {"answer": answer, "sources": sources}
     except Exception as e:
-        return f"Sorry, I encountered an error: {e}"
+        return {"answer": f"Sorry, I encountered an error: {e}", "sources": []}
 
 def embed_pdf(pdf_path: str, widget_id: str = "default") -> dict:
     """Extracts text from a newly uploaded PDF, chunks it with widget_id metadata, and adds to ChromaDB."""
@@ -154,19 +154,41 @@ def embed_url(url: str, widget_id: str = "default") -> dict:
         print(f"Error embedding URL: {e}")
         return {"success": False, "error": str(e)}
 
-
-def get_active_documents(widget_id: str = "default") -> list:
-    """Returns unique document names stored in ChromaDB for a specific widget_id."""
+def delete_document_source(source: str, widget_id: str = "default") -> dict:
+    """Deletes vectors matching a specific document source and widget_id."""
     try:
         data = vectorstore._collection.get(include=["metadatas"])
         metas = data.get("metadatas", [])
-        sources = set()
+        ids = data.get("ids", [])
+        ids_to_delete = []
+        for i, m in enumerate(metas):
+            if isinstance(m, dict) and m.get("source") == source:
+                if not widget_id or widget_id == "all" or m.get("widget_id") == widget_id or ("widget_id" not in m and widget_id == "default"):
+                    ids_to_delete.append(ids[i])
+        
+        if ids_to_delete:
+            vectorstore.delete(ids=ids_to_delete)
+            return {"success": True, "message": f"Successfully deleted '{source}' ({len(ids_to_delete)} chunks deleted)."}
+        else:
+            return {"success": False, "error": f"No document matching '{source}' found."}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+def get_active_documents(widget_id: str = "default") -> list:
+    """Returns detailed active document objects stored in ChromaDB for a specific widget_id."""
+    try:
+        data = vectorstore._collection.get(include=["metadatas"])
+        metas = data.get("metadatas", [])
+        doc_map = {}
         for m in metas:
             if m and isinstance(m, dict) and "source" in m:
-                # If widget_id is specified, filter by it
                 if not widget_id or widget_id == "all" or m.get("widget_id") == widget_id or ("widget_id" not in m and widget_id == "default"):
-                    sources.add(m["source"])
-        return list(sources)
+                    src = m["source"]
+                    doc_type = m.get("type", "web" if src.startswith("http") else "pdf")
+                    if src not in doc_map:
+                        doc_map[src] = {"source": src, "chunks": 0, "type": doc_type, "title": m.get("title", src)}
+                    doc_map[src]["chunks"] += 1
+        return list(doc_map.values())
     except Exception:
         return []
 
@@ -181,20 +203,22 @@ def get_db_stats(widget_id: str = "default") -> dict:
                 matching_chunks += 1
 
         docs = get_active_documents(widget_id)
-        return {"status": "ok", "total_chunks": matching_chunks, "documents": docs, "widget_id": widget_id}
+        simple_sources = [d["source"] for d in docs]
+        return {
+            "status": "ok", 
+            "total_chunks": matching_chunks, 
+            "documents": simple_sources, 
+            "detailed_documents": docs,
+            "widget_id": widget_id
+        }
     except Exception as e:
-        return {"status": "error", "total_chunks": 0, "documents": [], "error": str(e)}
+        return {"status": "error", "total_chunks": 0, "documents": [], "detailed_documents": [], "error": str(e)}
 
 def reset_vectorstore(widget_id: str = "default") -> dict:
     """Resets/deletes vectors in the vector store belonging to a specific widget_id."""
-    global vectorstore, retriever, rag_chain
     try:
         if not widget_id or widget_id == "all":
             vectorstore.delete_collection()
-            vectorstore = Chroma(
-                persist_directory=CHROMA_DB_DIR,
-                embedding_function=embeddings_model
-            )
         else:
             # Delete entries matching widget_id metadata
             data = vectorstore._collection.get(include=["metadatas"])
@@ -207,13 +231,6 @@ def reset_vectorstore(widget_id: str = "default") -> dict:
             if ids_to_delete:
                 vectorstore.delete(ids=ids_to_delete)
 
-        retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
-        rag_chain = (
-            {"context": retriever | format_docs, "question": RunnablePassthrough()}
-            | prompt
-            | llm
-            | StrOutputParser()
-        )
         return {"success": True, "message": f"Knowledge base for '{widget_id}' successfully reset."}
     except Exception as e:
         return {"success": False, "error": str(e)}
