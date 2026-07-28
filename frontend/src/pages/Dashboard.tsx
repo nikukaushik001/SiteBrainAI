@@ -57,6 +57,11 @@ export default function Dashboard() {
   const [copied, setCopied] = useState(false);
   const [userRole, setUserRole] = useState('client');
 
+  // Project Creation Modal State
+  const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
+
   const [projects, setProjects] = useState<Project[]>([]);
   const API_URL = 'http://127.0.0.1:8000';
 
@@ -230,27 +235,42 @@ export default function Dashboard() {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [playgroundMessages, isThinking]);
 
-  const handleAddProject = async () => {
-    const projName = window.prompt('Enter new Business/Project Name:');
-    if (!projName?.trim()) return;
+  const handleOpenAddProjectModal = () => {
+    setNewProjectName('');
+    setIsProjectModalOpen(true);
+  };
+
+  const submitNewProject = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!newProjectName.trim()) return;
+    
+    setIsCreatingProject(true);
+    const projName = newProjectName.trim();
     const projId = `sb_${projName.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${Date.now().toString().slice(-4)}`;
     
     try {
       const res = await fetch(`${API_URL}/api/projects`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-        body: JSON.stringify({ id: projId, name: projName.trim() })
+        body: JSON.stringify({ id: projId, name: projName })
       });
-      if (handleAuthError(res)) return;
+      if (handleAuthError(res)) {
+        setIsCreatingProject(false);
+        return;
+      }
       const data = await res.json();
       if (res.ok) {
         setProjects(prev => [...prev, data]);
         setActiveProjectId(data.id);
+        setIsProjectModalOpen(false);
+        setNewProjectName('');
       } else {
         alert(data.detail || 'Failed to create project');
       }
     } catch {
       alert('Error connecting to backend API');
+    } finally {
+      setIsCreatingProject(false);
     }
   };
 
@@ -459,7 +479,7 @@ export default function Dashboard() {
               <div className="project-selector-label">
                 <span>Active Business Project</span>
                 <button
-                  onClick={handleAddProject}
+                  onClick={handleOpenAddProjectModal}
                   style={{ fontSize: '11px', color: 'var(--accent-cyan)', padding: 0, border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700 }}
                 >
                   + New
@@ -1228,6 +1248,41 @@ export default function Dashboard() {
 
         </div>
       </main>
+
+      {/* Project Creation Modal */}
+      {isProjectModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content animate-fade-in glass-panel">
+            <h2>Create New Project</h2>
+            <p>Give your new business or project a clear name to organize your AI knowledge base.</p>
+            <form onSubmit={submitNewProject} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <input 
+                type="text" 
+                value={newProjectName} 
+                onChange={e => setNewProjectName(e.target.value)} 
+                placeholder="e.g. HireLoop AI" 
+                autoFocus
+                style={{
+                  width: '100%',
+                  background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  padding: '12px',
+                  borderRadius: '8px',
+                  color: '#fff',
+                  fontSize: '14px',
+                  outline: 'none'
+                }}
+              />
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '4px' }}>
+                <button type="button" className="btn-secondary" onClick={() => setIsProjectModalOpen(false)}>Cancel</button>
+                <button type="submit" className="btn-primary" disabled={isCreatingProject || !newProjectName.trim()}>
+                  {isCreatingProject ? 'Creating...' : 'Create Project'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
