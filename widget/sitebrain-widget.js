@@ -7,6 +7,8 @@
     const greetingMsg = (currentScript && currentScript.dataset.greeting) || "Hi there! How can I help you today?";
     const position = (currentScript && currentScript.dataset.position) || "bottom-right";
     const requireLead = (currentScript && currentScript.dataset.requireLead === "true");
+    const starterPromptsRaw = (currentScript && currentScript.dataset.starterPrompts) || "";
+    const starterChips = starterPromptsRaw ? starterPromptsRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
 
     // Backend endpoints
     const API_URL = "http://127.0.0.1:8000/chat";
@@ -54,6 +56,10 @@
                     <div class="sb-message sb-ai">${greetingMsg}</div>
                     <div class="sb-loading" id="sb-loading">AI is thinking...</div>
                 </div>
+                ${starterChips.length > 0 ? `
+                <div class="sb-chips-container" id="sb-chips">
+                    ${starterChips.map(chip => `<button class="sb-chip" style="border-color: ${primaryColor}; color: ${primaryColor};" data-prompt="${chip}">${chip}</button>`).join('')}
+                </div>` : ''}
                 <div class="sb-input-area">
                     <input type="text" id="sb-input" placeholder="Ask a question..." autocomplete="off" />
                     <button id="sb-send" style="background: ${primaryColor};">Send</button>
@@ -209,5 +215,20 @@
     input.addEventListener("keypress", (e) => {
         if (e.key === "Enter") sendMessage();
     });
+
+    // Starter chip click: populate input and send
+    if (starterChips.length > 0) {
+        const chipsContainer = document.getElementById("sb-chips");
+        if (chipsContainer) {
+            chipsContainer.querySelectorAll(".sb-chip").forEach(chip => {
+                chip.addEventListener("click", () => {
+                    input.value = chip.dataset.prompt;
+                    // Hide chips after one is clicked
+                    chipsContainer.style.display = "none";
+                    sendMessage();
+                });
+            });
+        }
+    }
 
 })();

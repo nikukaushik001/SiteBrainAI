@@ -13,6 +13,7 @@ interface Project {
   id: string;
   name: string;
   system_prompt?: string;
+  starter_prompts?: string;
 }
 
 interface AnalyticsLog {
@@ -20,6 +21,7 @@ interface AnalyticsLog {
   question: string;
   answer: string;
   is_unanswered: boolean;
+  sentiment: string;
   timestamp: string;
 }
 
@@ -29,6 +31,7 @@ interface AnalyticsData {
   total_unanswered: number;
   resolution_rate_pct: number;
   top_unanswered: { question: string; count: number }[];
+  sentiment_breakdown?: { Positive: number; Neutral: number; Negative: number };
   recent_logs: AnalyticsLog[];
 }
 
@@ -137,7 +140,8 @@ export default function Dashboard() {
   });
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData>({
     total_queries: 0, total_answered: 0, total_unanswered: 0,
-    resolution_rate_pct: 100, top_unanswered: [], recent_logs: []
+    resolution_rate_pct: 100, top_unanswered: [], recent_logs: [],
+    sentiment_breakdown: { Positive: 0, Neutral: 0, Negative: 0 }
   });
   const [leadsData, setLeadsData] = useState<Lead[]>([]);
   const [isResetting, setIsResetting] = useState(false);
@@ -150,12 +154,15 @@ export default function Dashboard() {
   const [position, setPosition] = useState<'bottom-right' | 'bottom-left'>('bottom-right');
   const [requireLead, setRequireLead] = useState(false);
   const [systemPrompt, setSystemPrompt] = useState('');
+  const [starterPrompts, setStarterPrompts] = useState('');
   
   // Update customizer state when project changes
   useEffect(() => {
     const proj = projects.find(p => p.id === activeProjectId);
     if (proj && proj.system_prompt) setSystemPrompt(proj.system_prompt);
     else setSystemPrompt('');
+    if (proj && proj.starter_prompts) setStarterPrompts(proj.starter_prompts);
+    else setStarterPrompts('');
   }, [activeProjectId, projects]);
 
   const handleUpdateSystemPrompt = async () => {
@@ -190,6 +197,9 @@ export default function Dashboard() {
   const [uploadStatus, setUploadStatus] = useState<{ status: 'idle' | 'uploading' | 'success' | 'error'; message: string }>({ status: 'idle', message: '' });
   const [inputUrl, setInputUrl] = useState('');
   const [scrapeStatus, setScrapeStatus] = useState<{ status: 'idle' | 'scraping' | 'success' | 'error'; message: string }>({ status: 'idle', message: '' });
+  const [sitemapUrl, setSitemapUrl] = useState('');
+  const [sitemapStatus, setSitemapStatus] = useState<{ status: 'idle' | 'crawling' | 'success' | 'error'; message: string }>({ status: 'idle', message: '' });
+  const [isSavingStarterPrompts, setIsSavingStarterPrompts] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
@@ -367,6 +377,52 @@ export default function Dashboard() {
       setScrapeStatus({ status: 'error', message: 'Failed to connect to the backend server.' });
     }
   };
+
+  const handleSitemapCrawl = async () => {
+    if (!sitemapUrl.trim()) return;
+    setSitemapStatus({ status: 'crawling', message: `Discovering and crawling all pages from sitemap...` });
+    try {
+      const response = await fetch(`${API_URL}/scrape/sitemap`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ url: sitemapUrl.trim(), widget_id: activeProjectId })
+      });
+      if (handleAuthError(response)) return;
+      const data = await response.json();
+      if (response.ok) {
+        setSitemapStatus({ status: 'success', message: data.message });
+        setSitemapUrl('');
+        fetchStats(activeProjectId);
+      } else {
+        setSitemapStatus({ status: 'error', message: data.detail || 'Sitemap crawl failed.' });
+      }
+    } catch {
+      setSitemapStatus({ status: 'error', message: 'Failed to connect to the backend server.' });
+    }
+  };
+
+  const handleSaveStarterPrompts = async () => {
+    setIsSavingStarterPrompts(true);
+    try {
+      const res = await fetch(`${API_URL}/api/projects/${activeProjectId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ starter_prompts: starterPrompts })
+      });
+      if (handleAuthError(res)) return;
+      if (res.ok) {
+        const data = await res.json();
+        setProjects(prev => prev.map(p => p.id === data.id ? data : p));
+        alert('Starter prompts saved!');
+      }
+    } catch {
+      alert('Error saving starter prompts.');
+    } finally {
+      setIsSavingStarterPrompts(false);
+    }
+  };
+
+
 
   const handleDeleteDocument = async (sourceName: string) => {
     if (!window.confirm(`Are you sure you want to delete source '${sourceName}' from '${currentProject.name}'?`)) return;
@@ -744,6 +800,38 @@ export default function Dashboard() {
                     </div>
                   )}
                 </div>
+
+                {/* Sitemap Auto-Crawler */}
+                <div className="glass-panel section-panel" style={{ gridColumn: '1 / -1' }}>
+                  <div className="section-title">
+                    <span>🗺️</span> Full Website Sitemap Crawler
+                    <span style={{ marginLeft: '10px', fontSize: '11px', padding: '2px 8px', borderRadius: '20px', background: 'rgba(99,102,241,0.2)', color: 'var(--accent-indigo)', fontWeight: 700 }}>NEW</span>
+                  </div>
+                  <p className="section-subtitle">
+                    Paste your <code>sitemap.xml</code> URL to automatically discover and index <strong>all pages</strong> of a website at once — instead of adding URLs one by one. Up to 50 pages per crawl.
+                  </p>
+
+                  <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                    <input
+                      className="url-input"
+                      type="text"
+                      placeholder="e.g. https://mybusiness.com/sitemap.xml"
+                      value={sitemapUrl}
+                      onChange={(e) => setSitemapUrl(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSitemapCrawl()}
+                      style={{ flex: 1 }}
+                    />
+                    <button className="btn-primary" onClick={handleSitemapCrawl} disabled={sitemapStatus.status === 'crawling'}>
+                      {sitemapStatus.status === 'crawling' ? '⏳ Crawling All Pages...' : '🗺️ Crawl Full Sitemap'}
+                    </button>
+                  </div>
+
+                  {sitemapStatus.status !== 'idle' && (
+                    <div className={`upload-status ${sitemapStatus.status === 'crawling' ? 'uploading' : sitemapStatus.status}`} style={{ marginTop: '14px' }}>
+                      <p>{sitemapStatus.message}</p>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Active Knowledge Sources */}
@@ -896,7 +984,30 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  {/* Unanswered Intelligence */}
+                  {/* Sentiment Breakdown */}
+                  <div className="glass-panel section-panel" style={{ marginBottom: '22px' }}>
+                    <div className="section-title"><span>😊</span> Visitor Sentiment Analysis
+                      <span style={{ marginLeft: '10px', fontSize: '11px', padding: '2px 8px', borderRadius: '20px', background: 'rgba(99,102,241,0.2)', color: 'var(--accent-indigo)', fontWeight: 700 }}>NEW</span>
+                    </div>
+                    <p className="section-subtitle">AI-powered analysis of user emotions in their questions, helping you understand visitor satisfaction.</p>
+                    <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginTop: '12px' }}>
+                      <div style={{ flex: 1, minWidth: '120px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '12px', padding: '16px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '28px', marginBottom: '4px' }}>😊</div>
+                        <div style={{ fontSize: '26px', fontWeight: 800, color: 'var(--accent-emerald)' }}>{analyticsData.sentiment_breakdown?.Positive ?? 0}</div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>Positive</div>
+                      </div>
+                      <div style={{ flex: 1, minWidth: '120px', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.25)', borderRadius: '12px', padding: '16px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '28px', marginBottom: '4px' }}>😐</div>
+                        <div style={{ fontSize: '26px', fontWeight: 800, color: 'var(--accent-indigo)' }}>{analyticsData.sentiment_breakdown?.Neutral ?? 0}</div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>Neutral</div>
+                      </div>
+                      <div style={{ flex: 1, minWidth: '120px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '12px', padding: '16px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '28px', marginBottom: '4px' }}>😟</div>
+                        <div style={{ fontSize: '26px', fontWeight: 800, color: '#f87171' }}>{analyticsData.sentiment_breakdown?.Negative ?? 0}</div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>Negative</div>
+                      </div>
+                    </div>
+                  </div>
                   <div className="glass-panel section-panel" style={{ marginBottom: '22px' }}>
                     <div className="section-title"><span>💡</span> Unanswered Questions Intelligence</div>
                     <p className="section-subtitle">
@@ -929,15 +1040,19 @@ export default function Dashboard() {
                           <div key={log.id} className="log-entry">
                             <div className="log-header">
                               <span className="log-timestamp">{log.timestamp}</span>
-                              {log.is_unanswered ? (
-                                <span className="log-status-badge" style={{ background: 'rgba(239,68,68,0.18)', color: '#fca5a5' }}>
-                                  ⚠️ Unanswered
-                                </span>
-                              ) : (
-                                <span className="log-status-badge" style={{ background: 'rgba(16,185,129,0.18)', color: 'var(--accent-emerald)' }}>
-                                  ✅ Answered
-                                </span>
-                              )}
+                              <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                {log.is_unanswered ? (
+                                  <span className="log-status-badge" style={{ background: 'rgba(239,68,68,0.18)', color: '#fca5a5' }}>⚠️ Unanswered</span>
+                                ) : (
+                                  <span className="log-status-badge" style={{ background: 'rgba(16,185,129,0.18)', color: 'var(--accent-emerald)' }}>✅ Answered</span>
+                                )}
+                                {log.sentiment === 'Positive' && (
+                                  <span className="log-status-badge" style={{ background: 'rgba(16,185,129,0.12)', color: '#6ee7b7' }}>😊 Positive</span>
+                                )}
+                                {log.sentiment === 'Negative' && (
+                                  <span className="log-status-badge" style={{ background: 'rgba(239,68,68,0.12)', color: '#fca5a5' }}>😟 Negative</span>
+                                )}
+                              </div>
                             </div>
                             <div className="log-question">Q: {log.question}</div>
                             <div className="log-answer">A: {log.answer}</div>
@@ -1066,6 +1181,35 @@ export default function Dashboard() {
                     </div>
                     <button className="btn-secondary" onClick={handleUpdateSystemPrompt} style={{ width: '100%' }}>
                       💾 Save Instructions
+                    </button>
+                  </div>
+
+                  <div className="glass-panel section-panel">
+                    <div className="section-title">💬 Starter Prompt Chips
+                      <span style={{ marginLeft: '10px', fontSize: '11px', padding: '2px 8px', borderRadius: '20px', background: 'rgba(99,102,241,0.2)', color: 'var(--accent-indigo)', fontWeight: 700 }}>NEW</span>
+                    </div>
+                    <p className="section-subtitle">
+                      Add quick-action chips that appear in your widget to guide visitors. Enter comma-separated prompts (e.g. <code>What's your pricing?, Book a demo, How does it work?</code>).
+                    </p>
+                    <div className="form-group" style={{ marginBottom: '12px' }}>
+                      <input
+                        type="text"
+                        placeholder="What's your pricing?, Book a demo, How does it work?"
+                        value={starterPrompts}
+                        onChange={(e) => setStarterPrompts(e.target.value)}
+                      />
+                    </div>
+                    {starterPrompts && (
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
+                        {starterPrompts.split(',').filter(s => s.trim()).map((chip, i) => (
+                          <span key={i} style={{ padding: '6px 14px', borderRadius: '20px', background: `${primaryColor}22`, border: `1px solid ${primaryColor}55`, color: '#fff', fontSize: '12px', fontWeight: 600 }}>
+                            {chip.trim()}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <button className="btn-secondary" onClick={handleSaveStarterPrompts} disabled={isSavingStarterPrompts} style={{ width: '100%' }}>
+                      {isSavingStarterPrompts ? 'Saving...' : '💾 Save Starter Chips'}
                     </button>
                   </div>
 

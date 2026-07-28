@@ -110,9 +110,25 @@ def ask_question(question: str, widget_id: str = "default", system_prompt: str =
         messages = build_messages(question, context_str, system_prompt)
         response = llm.invoke(messages)
         answer = response.content if hasattr(response, 'content') else str(response)
-        return {"answer": answer, "sources": sources}
+
+        # Quick Sentiment Analysis
+        sentiment = "Neutral"
+        try:
+            sentiment_msg = [
+                SystemMessage(content="Analyze the sentiment of the following user message. Reply with ONLY ONE WORD: Positive, Neutral, or Negative."),
+                HumanMessage(content=question)
+            ]
+            sentiment_response = llm.invoke(sentiment_msg)
+            raw_sentiment = (sentiment_response.content if hasattr(sentiment_response, 'content') else str(sentiment_response)).strip()
+            if "Positive" in raw_sentiment or "positive" in raw_sentiment.lower(): sentiment = "Positive"
+            elif "Negative" in raw_sentiment or "negative" in raw_sentiment.lower(): sentiment = "Negative"
+            else: sentiment = "Neutral"
+        except Exception as e:
+            print(f"Sentiment analysis failed: {e}")
+
+        return {"answer": answer, "sources": sources, "sentiment": sentiment}
     except Exception as e:
-        return {"answer": f"Sorry, I encountered an error: {e}", "sources": []}
+        return {"answer": f"Sorry, I encountered an error: {e}", "sources": [], "sentiment": "Neutral"}
 
 def embed_pdf(pdf_path: str, widget_id: str = "default") -> dict:
     """Extracts text from a newly uploaded PDF, chunks it with widget_id metadata, and adds to ChromaDB."""
@@ -261,5 +277,50 @@ def reset_vectorstore(widget_id: str = "default") -> dict:
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+import requests
+from bs4 import BeautifulSoup
 
-
+def crawl_sitemap(sitemap_url: str, widget_id: str = "default") -> dict:
+    """Fetches a sitemap.xml, extracts up to 50 URLs, and embeds them."""
+    print(f"Crawling sitemap: {sitemap_url} (Widget ID: {widget_id})")
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        response = requests.get(sitemap_url, timeout=15, headers=headers)
+        response.raise_for_status()
+        
+        # Try 'xml' parser, fallback to 'html.parser' if lxml isn't installed
+        try:
+            soup = BeautifulSoup(response.content, 'xml')
+            locs = soup.find_all("loc")
+        except Exception:
+            soup = BeautifulSoup(response.content, 'html.parser')
+            locs = soup.find_all("loc")
+            
+        urls = []
+        for loc in locs:
+            url = loc.text.strip()
+            if url:
+                urls.append(url)
+                
+        # Limit to 50 URLs for safety
+        urls = list(set(urls))[:50]
+        
+        if not urls:
+            return {"success": False, "error": "No valid URLs found in sitemap."}
+            
+        print(f"Found {len(urls)} URLs. Starting embed process...")
+        results = []
+        for u in urls:
+            res = embed_url(u, widget_id)
+            results.append({"url": u, "success": res.get("success", False)})
+            
+        success_count = sum(1 for r in results if r["success"])
+        return {
+            "success": True, 
+            "message": f"Successfully scraped {success_count} out of {len(urls)} pages from sitemap.",
+            "total_urls": len(urls),
+            "successful_embeds": success_count
+        }
+    except Exception as e:
+        print(f"Error crawling sitemap: {e}")
+        return {"success": False, "error": str(e)}

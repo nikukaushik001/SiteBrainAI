@@ -16,7 +16,7 @@ from app.auth import (
     create_access_token, get_current_user,
     Token, TokenData, timedelta, ACCESS_TOKEN_EXPIRE_MINUTES
 )
-from app.ai_service import ask_question, embed_pdf, embed_url, get_db_stats, reset_vectorstore, delete_document_source
+from app.ai_service import ask_question, embed_pdf, embed_url, crawl_sitemap, get_db_stats, reset_vectorstore, delete_document_source
 
 
 # Create database tables on startup
@@ -66,6 +66,7 @@ class TenantCreate(BaseModel):
 class TenantUpdate(BaseModel):
     name: Optional[str] = None
     system_prompt: Optional[str] = None
+    starter_prompts: Optional[str] = None
 
 class LeadCreate(BaseModel):
     widget_id: Optional[str] = "default"
@@ -211,10 +212,10 @@ def get_projects(
     if current_user.role == "admin":
         tenants = db.query(Tenant).all()
         if tenants:
-            return [{"id": t.id, "name": t.name, "system_prompt": t.system_prompt} for t in tenants]
+            return [{"id": t.id, "name": t.name, "system_prompt": t.system_prompt, "starter_prompts": t.starter_prompts} for t in tenants]
         return [
-            {"id": "proj_main_biz", "name": "Main Business Workspace", "system_prompt": ""},
-            {"id": "proj_hireloop", "name": "HireLoop Ai", "system_prompt": ""},
+            {"id": "proj_main_biz", "name": "Main Business Workspace", "system_prompt": "", "starter_prompts": ""},
+            {"id": "proj_hireloop", "name": "HireLoop Ai", "system_prompt": "", "starter_prompts": ""},
         ]
     else:
         user = db.query(User).filter(User.email == current_user.email).first()
@@ -222,8 +223,8 @@ def get_projects(
             raise HTTPException(status_code=404, detail="User not found.")
         tenants = db.query(Tenant).filter(Tenant.user_id == user.id).all()
         if tenants:
-            return [{"id": t.id, "name": t.name, "system_prompt": t.system_prompt} for t in tenants]
-        return [{"id": f"proj_{user.email.split('@')[0]}", "name": user.email.split('@')[0].capitalize(), "system_prompt": ""}]
+            return [{"id": t.id, "name": t.name, "system_prompt": t.system_prompt, "starter_prompts": t.starter_prompts} for t in tenants]
+        return [{"id": f"proj_{user.email.split('@')[0]}", "name": user.email.split('@')[0].capitalize(), "system_prompt": "", "starter_prompts": ""}]
 
 
 @app.post("/api/projects", tags=["Projects"])
@@ -246,7 +247,7 @@ def create_project(
     db.add(new_tenant)
     db.commit()
     db.refresh(new_tenant)
-    return {"id": new_tenant.id, "name": new_tenant.name, "system_prompt": new_tenant.system_prompt}
+    return {"id": new_tenant.id, "name": new_tenant.name, "system_prompt": new_tenant.system_prompt, "starter_prompts": new_tenant.starter_prompts}
 
 
 @app.put("/api/projects/{tenant_id}", tags=["Projects"])
@@ -270,10 +271,12 @@ def update_project(
         tenant.name = update_data.name
     if update_data.system_prompt is not None:
         tenant.system_prompt = update_data.system_prompt
+    if update_data.starter_prompts is not None:
+        tenant.starter_prompts = update_data.starter_prompts
         
     db.commit()
     db.refresh(tenant)
-    return {"id": tenant.id, "name": tenant.name, "system_prompt": tenant.system_prompt}
+    return {"id": tenant.id, "name": tenant.name, "system_prompt": tenant.system_prompt, "starter_prompts": tenant.starter_prompts}
 
 
 @app.delete("/api/projects/{tenant_id}", tags=["Projects"])
@@ -328,6 +331,11 @@ def analytics_endpoint(
         for q, count in sorted(unanswered_counts.items(), key=lambda item: item[1], reverse=True)[:10]
     ]
 
+    sentiment_counts = {"Positive": 0, "Neutral": 0, "Negative": 0}
+    for l in logs:
+        s = getattr(l, "sentiment", "Neutral") or "Neutral"
+        sentiment_counts[s] = sentiment_counts.get(s, 0) + 1
+
     return {
         "widget_id": widget_id,
         "total_queries": total_queries,
@@ -335,12 +343,14 @@ def analytics_endpoint(
         "total_unanswered": total_unanswered,
         "resolution_rate_pct": resolution_rate,
         "top_unanswered": top_unanswered,
+        "sentiment_breakdown": sentiment_counts,
         "recent_logs": [
             {
                 "id": log.id,
                 "question": log.question,
                 "answer": log.answer,
                 "is_unanswered": log.is_unanswered,
+                "sentiment": getattr(log, "sentiment", "Neutral") or "Neutral",
                 "timestamp": log.timestamp.strftime("%Y-%m-%d %H:%M:%S") if log.timestamp else None
             }
             for log in logs[:50]
@@ -499,13 +509,14 @@ def chat_endpoint(request: ChatRequest, db: Session = Depends(get_db)):
             widget_id=widget_id,
             question=request.question.strip(),
             answer=answer.strip(),
-            is_unanswered=is_unanswered
+            is_unanswered=is_unanswered,
+            sentiment=ai_result.get("sentiment", "Neutral")
         ))
         db.commit()
     except Exception as e:
         print(f"Analytics Logging Error: {e}")
 
-    return {"answer": answer, "sources": sources, "widget_id": widget_id, "is_unanswered": is_unanswered}
+    return {"answer": answer, "sources": sources, "widget_id": widget_id, "is_unanswered": is_unanswered, "sentiment": ai_result.get("sentiment", "Neutral")}
 
 
 # ── Knowledge Base (protected) ────────────────────────────────────────────────
@@ -527,6 +538,24 @@ def scrape_endpoint(
         "message": f"Successfully scraped '{result.get('title', result['source'])}' and added {result['chunks_added']} chunks.",
         "widget_id": request.widget_id,
         "source": result["source"]
+    }
+
+@app.post("/scrape/sitemap", tags=["Knowledge Base"])
+def scrape_sitemap_endpoint(
+    request: ScrapeRequest,
+    current_user: TokenData = Depends(get_current_user)
+):
+    if not request.url or not request.url.strip():
+        raise HTTPException(status_code=400, detail="Sitemap URL is required.")
+
+    result = crawl_sitemap(sitemap_url=request.url.strip(), widget_id=request.widget_id or "default")
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Failed to crawl sitemap"))
+
+    return {
+        "status": "success",
+        "message": result.get("message"),
+        "widget_id": request.widget_id
     }
 
 

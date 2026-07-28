@@ -16,6 +16,7 @@ class Tenant(Base):
     id = Column(String, primary_key=True, index=True) # e.g. proj_hireloop
     name = Column(String, nullable=False)
     system_prompt = Column(String, nullable=True) # Custom instructions for the LLM
+    starter_prompts = Column(String, nullable=True) # Comma-separated starter chips
     user_id = Column(Integer, ForeignKey("users.id")) # Optional ownership
 
 class QueryLog(Base):
@@ -26,6 +27,7 @@ class QueryLog(Base):
     question = Column(String, nullable=False)
     answer = Column(String, nullable=False)
     is_unanswered = Column(Boolean, default=False)
+    sentiment = Column(String, default="Neutral") # Positive, Neutral, Negative
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
 
 class Lead(Base):
