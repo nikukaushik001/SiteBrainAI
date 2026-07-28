@@ -3,92 +3,151 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import Logo from '../components/Logo';
 import '../App.css';
 
+const API_URL = 'http://127.0.0.1:8000';
+
 export default function AuthPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const isLogin = location.pathname === '/login';
-  
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
+
+    if (!email.trim() || !password.trim()) {
+      setError('Please fill in both fields.');
+      return;
+    }
+    if (!isLogin && password.length < 6) {
+      setError('Password must be at least 6 characters.');
+      return;
+    }
+
     setIsLoading(true);
-    
+
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/login', {
+      const endpoint = isLogin ? `${API_URL}/api/login` : `${API_URL}/api/register`;
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ email: email.trim(), password })
       });
-      
+
       const data = await response.json();
-      setIsLoading(false);
-      
+
       if (response.ok) {
-        localStorage.setItem('isAuthenticated', 'true');
-        localStorage.setItem('userRole', data.role);
+        // Store JWT token — this is the single source of truth for auth
         localStorage.setItem('token', data.access_token);
+        localStorage.setItem('userRole', data.role);
+        localStorage.setItem('userEmail', data.email);
+        // Remove legacy flag to avoid confusion
+        localStorage.removeItem('isAuthenticated');
         navigate('/dashboard');
       } else {
-        alert(data.detail || "Login failed");
+        setError(data.detail || (isLogin ? 'Login failed. Check your credentials.' : 'Registration failed.'));
       }
-    } catch (err) {
+    } catch {
+      setError('Cannot connect to server. Make sure the backend is running.');
+    } finally {
       setIsLoading(false);
-      alert("Error connecting to server.");
     }
   };
 
   return (
     <div className="auth-layout">
       <div className="auth-container glass-panel">
-        <Logo onClick={() => navigate('/')} style={{ justifyContent: 'center', marginBottom: '24px' }} />
-        
-        <h2>{isLogin ? 'Welcome Back' : 'Create Your Account'}</h2>
-        <p style={{ color: 'var(--text-secondary)', marginBottom: '32px', textAlign: 'center' }}>
-          {isLogin ? 'Sign in to manage your AI agents.' : 'Start your 14-day free trial. No credit card required.'}
-          <br/>
-          <span style={{ fontSize: '12px', color: 'var(--accent-cyan)' }}>
-            <strong>Demo:</strong> Type 'admin' in email for Platform Admin access.
+        <Logo onClick={() => navigate('/')} style={{ justifyContent: 'center', marginBottom: '22px' }} />
+
+        <h2>{isLogin ? 'Welcome Back' : 'Create Account'}</h2>
+        <p className="auth-subtitle">
+          {isLogin
+            ? 'Sign in to manage your AI agents.'
+            : 'Start your 14-day free trial. No credit card required.'}
+          <br />
+          <span style={{ fontSize: '12px', color: 'var(--accent-cyan)', fontWeight: 600 }}>
+            Demo: use <strong>admin@braindesk.ai</strong> / <strong>admin123</strong>
           </span>
         </p>
+
+        {/* Error Alert */}
+        {error && (
+          <div style={{
+            background: 'rgba(239,68,68,0.1)',
+            border: '1px solid rgba(239,68,68,0.35)',
+            borderRadius: '8px',
+            padding: '11px 14px',
+            marginBottom: '20px',
+            color: '#fca5a5',
+            fontSize: '13px',
+            fontWeight: 500,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            ⚠️ {error}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="auth-form">
           <div className="form-group">
             <label>Email Address</label>
-            <input 
-              type="email" 
+            <input
+              type="email"
               required
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => { setEmail(e.target.value); setError(''); }}
               placeholder="you@company.com"
-              style={{ width: '100%', boxSizing: 'border-box' }}
-            />
-          </div>
-          
-          <div className="form-group">
-            <label>Password</label>
-            <input 
-              type="password" 
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              style={{ width: '100%', boxSizing: 'border-box' }}
+              disabled={isLoading}
             />
           </div>
 
-          <button type="submit" className="btn-primary" style={{ width: '100%', marginTop: '16px', padding: '12px' }} disabled={isLoading}>
-            {isLoading ? 'Processing...' : (isLogin ? 'Sign In' : 'Sign Up')}
+          <div className="form-group">
+            <label>Password</label>
+            <input
+              type="password"
+              required
+              value={password}
+              onChange={(e) => { setPassword(e.target.value); setError(''); }}
+              placeholder={isLogin ? '••••••••' : 'Min. 6 characters'}
+              disabled={isLoading}
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="btn-primary"
+            style={{ width: '100%', marginTop: '8px', padding: '13px', opacity: isLoading ? 0.7 : 1 }}
+            disabled={isLoading}
+          >
+            {isLoading
+              ? '⏳ Processing...'
+              : isLogin
+                ? 'Sign In →'
+                : 'Create Account →'}
           </button>
         </form>
 
         <div className="auth-toggle">
           {isLogin ? (
-            <p>Don't have an account? <span onClick={() => navigate('/signup')} className="auth-link">Sign up</span></p>
+            <p>
+              Don't have an account?{' '}
+              <span onClick={() => { navigate('/signup'); setError(''); }} className="auth-link">
+                Sign up free
+              </span>
+            </p>
           ) : (
-            <p>Already have an account? <span onClick={() => navigate('/login')} className="auth-link">Sign in</span></p>
+            <p>
+              Already have an account?{' '}
+              <span onClick={() => { navigate('/login'); setError(''); }} className="auth-link">
+                Sign in
+              </span>
+            </p>
           )}
         </div>
       </div>
