@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Logo from '../components/Logo';
 import '../App.css';
@@ -6,11 +6,13 @@ import '../App.css';
 interface Message {
   role: 'user' | 'assistant';
   content: string;
+  sources?: string[];
 }
 
 interface Project {
   id: string;
   name: string;
+  system_prompt?: string;
 }
 
 interface AnalyticsLog {
@@ -30,50 +32,81 @@ interface AnalyticsData {
   recent_logs: AnalyticsLog[];
 }
 
+interface DetailedDoc {
+  source: string;
+  chunks: number;
+  type: string;
+  title?: string;
+}
+
+interface Lead {
+  id: number;
+  widget_id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  notes?: string;
+  timestamp: string;
+}
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'overview' | 'playground' | 'documents' | 'analytics' | 'widget'>('overview');
+  const [analyticsSubTab, setAnalyticsSubTab] = useState<'intelligence' | 'leads'>('intelligence');
   const [copied, setCopied] = useState(false);
   const [userRole, setUserRole] = useState('client');
 
   const [projects, setProjects] = useState<Project[]>([]);
-  
+  const API_URL = 'http://127.0.0.1:8000';
+
+  /** Returns auth headers for protected API calls. */
+  const getAuthHeaders = useCallback((): Record<string, string> => {
+    const token = localStorage.getItem('token');
+    return token ? { 'Authorization': `Bearer ${token}` } : {};
+  }, []);
+
+  /** If any protected call returns 401, force logout. */
+  const handleAuthError = useCallback((res: Response) => {
+    if (res.status === 401) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('userRole');
+      localStorage.removeItem('userEmail');
+      navigate('/login');
+      return true;
+    }
+    return false;
+  }, [navigate]);
+
   // Fetch projects from backend
   useEffect(() => {
     const fetchProjects = async () => {
       const token = localStorage.getItem('token');
-      if (!token) {
-        navigate('/login');
-        return;
-      }
+      if (!token) { navigate('/login'); return; }
       try {
-        const response = await fetch('http://127.0.0.1:8000/api/projects', {
+        const response = await fetch(`${API_URL}/api/projects`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (response.ok) {
           const data = await response.json();
           setProjects(data);
-          if (data.length > 0 && activeProjectId === 'default_workspace') {
-             setActiveProjectId(data[0].id);
-          }
+          if (data.length > 0) setActiveProjectId(data[0].id);
         } else {
-          if(response.status === 401) {
-              localStorage.removeItem('token');
-              localStorage.removeItem('isAuthenticated');
-              navigate('/login');
+          if (response.status === 401) {
+            localStorage.removeItem('token');
+            localStorage.removeItem('isAuthenticated');
+            navigate('/login');
           }
         }
       } catch (err) {
-        console.error("Failed to fetch projects", err);
+        console.error('Failed to fetch projects', err);
       }
     };
     fetchProjects();
-  }, []);
+  }, [navigate]);
 
   const [activeProjectId, setActiveProjectId] = useState<string>(() => {
     try {
-      const savedId = localStorage.getItem('braindesk_active_project');
-      return savedId || 'default_workspace';
+      return localStorage.getItem('braindesk_active_project') || 'default_workspace';
     } catch {
       return 'default_workspace';
     }
@@ -82,9 +115,6 @@ export default function Dashboard() {
   useEffect(() => {
     const role = localStorage.getItem('userRole') || 'client';
     setUserRole(role);
-    if (role === 'client') {
-      setActiveProjectId('proj_hireloop');
-    }
   }, []);
 
   useEffect(() => {
@@ -96,24 +126,52 @@ export default function Dashboard() {
     }
   }, [projects, activeProjectId]);
 
-
-
-  const [dbStats, setDbStats] = useState<{ total_chunks: number, documents?: string[], status: string }>({ total_chunks: 0, documents: [], status: 'connecting' });
-  const [analyticsData, setAnalyticsData] = useState<AnalyticsData>({
-    total_queries: 0,
-    total_answered: 0,
-    total_unanswered: 0,
-    resolution_rate_pct: 100,
-    top_unanswered: [],
-    recent_logs: []
+  const [dbStats, setDbStats] = useState<{ total_chunks: number; documents?: string[]; detailed_documents?: DetailedDoc[]; status: string }>({
+    total_chunks: 0, documents: [], detailed_documents: [], status: 'connecting'
   });
+  const [analyticsData, setAnalyticsData] = useState<AnalyticsData>({
+    total_queries: 0, total_answered: 0, total_unanswered: 0,
+    resolution_rate_pct: 100, top_unanswered: [], recent_logs: []
+  });
+  const [leadsData, setLeadsData] = useState<Lead[]>([]);
   const [isResetting, setIsResetting] = useState(false);
+  const [deletingSource, setDeletingSource] = useState<string | null>(null);
 
   // Customizer State
   const [botName, setBotName] = useState('BrainDesk Assistant');
   const [primaryColor, setPrimaryColor] = useState('#6366f1');
   const [greetingMsg, setGreetingMsg] = useState('Hi! Welcome to our site. How can I help you today?');
   const [position, setPosition] = useState<'bottom-right' | 'bottom-left'>('bottom-right');
+  const [requireLead, setRequireLead] = useState(false);
+  const [systemPrompt, setSystemPrompt] = useState('');
+  
+  // Update customizer state when project changes
+  useEffect(() => {
+    const proj = projects.find(p => p.id === activeProjectId);
+    if (proj && proj.system_prompt) setSystemPrompt(proj.system_prompt);
+    else setSystemPrompt('');
+  }, [activeProjectId, projects]);
+
+  const handleUpdateSystemPrompt = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/projects/${activeProjectId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ system_prompt: systemPrompt })
+      });
+      if (handleAuthError(res)) return;
+      if (res.ok) {
+        const data = await res.json();
+        setProjects(prev => prev.map(p => p.id === data.id ? data : p));
+        alert('System prompt saved successfully!');
+      } else {
+        const data = await res.json();
+        alert(data.detail || 'Failed to update system prompt');
+      }
+    } catch {
+      alert('Error connecting to backend API');
+    }
+  };
 
   // Playground Chat State
   const [playgroundMessages, setPlaygroundMessages] = useState<Message[]>([
@@ -123,97 +181,112 @@ export default function Dashboard() {
   const [isThinking, setIsThinking] = useState(false);
 
   // Upload & Scraping State
-  const [uploadStatus, setUploadStatus] = useState<{ status: 'idle' | 'uploading' | 'success' | 'error', message: string }>({
-    status: 'idle',
-    message: ''
-  });
+  const [uploadStatus, setUploadStatus] = useState<{ status: 'idle' | 'uploading' | 'success' | 'error'; message: string }>({ status: 'idle', message: '' });
   const [inputUrl, setInputUrl] = useState('');
-  const [scrapeStatus, setScrapeStatus] = useState<{ status: 'idle' | 'scraping' | 'success' | 'error', message: string }>({
-    status: 'idle',
-    message: ''
-  });
+  const [scrapeStatus, setScrapeStatus] = useState<{ status: 'idle' | 'scraping' | 'success' | 'error'; message: string }>({ status: 'idle', message: '' });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
+  const currentProject = projects.find(p => p.id === activeProjectId) || projects[0] || { id: activeProjectId, name: 'Loading...' };
 
-  const API_URL = "http://127.0.0.1:8000";
-
-  // Active Project Helper
-  const currentProject = projects.find(p => p.id === activeProjectId) || projects[0];
-
-  // Fetch vector stats
   const fetchStats = async (widgetId: string) => {
     try {
-      const res = await fetch(`${API_URL}/stats?widget_id=${widgetId}`);
-      if (res.ok) {
-        const data = await res.json();
-        setDbStats(data);
-      }
+      const res = await fetch(`${API_URL}/stats?widget_id=${widgetId}`, {
+        headers: getAuthHeaders()
+      });
+      if (handleAuthError(res)) return;
+      if (res.ok) setDbStats(await res.json());
     } catch {
-      setDbStats({ total_chunks: 0, documents: [], status: 'offline' });
+      setDbStats({ total_chunks: 0, documents: [], detailed_documents: [], status: 'offline' });
     }
   };
 
-  // Fetch analytics metrics
   const fetchAnalytics = async (widgetId: string) => {
     try {
       const res = await fetch(`${API_URL}/analytics?widget_id=${widgetId}`);
-      if (res.ok) {
-        const data = await res.json();
-        setAnalyticsData(data);
-      }
-    } catch {
-      // ignore
-    }
+      if (res.ok) setAnalyticsData(await res.json());
+    } catch { /* analytics fetch failure is non-critical */ }
+  };
+
+  const fetchLeads = async (widgetId: string) => {
+    try {
+      const res = await fetch(`${API_URL}/api/leads?widget_id=${widgetId}`, {
+        headers: getAuthHeaders()
+      });
+      if (handleAuthError(res)) return;
+      if (res.ok) setLeadsData(await res.json());
+    } catch { /* leads fetch failure non-critical */ }
   };
 
   useEffect(() => {
     fetchStats(activeProjectId);
     fetchAnalytics(activeProjectId);
+    fetchLeads(activeProjectId);
   }, [activeProjectId, activeTab]);
 
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [playgroundMessages, isThinking]);
 
-  // Handle New Project Creation
-  const handleAddProject = () => {
-    const projName = window.prompt("Enter new Business/Project Name:");
-    if (!projName || !projName.trim()) return;
-
+  const handleAddProject = async () => {
+    const projName = window.prompt('Enter new Business/Project Name:');
+    if (!projName?.trim()) return;
     const projId = `sb_${projName.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${Date.now().toString().slice(-4)}`;
-    const newProj = { id: projId, name: projName.trim() };
-    setProjects(prev => [...prev, newProj]);
-    setActiveProjectId(projId);
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('isAuthenticated');
-    localStorage.removeItem('userRole');
-    localStorage.removeItem('token');
-    navigate('/');
-  };
-
-  // Handle Clear Analytics Logs
-  const handleClearAnalytics = async () => {
-    if (!window.confirm(`Clear query analytics logs for '${currentProject.name}'?`)) return;
+    
     try {
-      await fetch(`${API_URL}/analytics/clear?widget_id=${activeProjectId}`, { method: 'POST' });
-      fetchAnalytics(activeProjectId);
+      const res = await fetch(`${API_URL}/api/projects`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ id: projId, name: projName.trim() })
+      });
+      if (handleAuthError(res)) return;
+      const data = await res.json();
+      if (res.ok) {
+        setProjects(prev => [...prev, data]);
+        setActiveProjectId(data.id);
+      } else {
+        alert(data.detail || 'Failed to create project');
+      }
     } catch {
-      alert("Error clearing analytics logs.");
+      alert('Error connecting to backend API');
     }
   };
 
-  // Handle Dynamic Embed Script Code
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('userRole');
+    localStorage.removeItem('userEmail');
+    navigate('/');
+  };
+
+  const handleClearAnalytics = async () => {
+    if (!window.confirm(`Clear query analytics logs for '${currentProject.name}'?`)) return;
+    try {
+      const res = await fetch(`${API_URL}/analytics/clear?widget_id=${activeProjectId}`, {
+        method: 'POST',
+        headers: getAuthHeaders()
+      });
+      if (handleAuthError(res)) return;
+      fetchAnalytics(activeProjectId);
+    } catch {
+      alert('Error clearing analytics logs.');
+    }
+  };
+
+  const handleExportCSV = () => {
+    const token = localStorage.getItem('token') || '';
+    window.open(`${API_URL}/analytics/export?widget_id=${activeProjectId}&token=${token}`, '_blank');
+  };
+
   const widgetCode = `<script 
   src="${API_URL}/static/sitebrain-widget.js" 
   data-widget-id="${activeProjectId}"
   data-bot-name="${botName}" 
   data-color="${primaryColor}" 
   data-greeting="${greetingMsg}" 
-  data-position="${position}">
+  data-position="${position}"
+  data-require-lead="${requireLead}">
 </script>`;
 
   const handleCopy = () => {
@@ -222,28 +295,23 @@ export default function Dashboard() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Handle PDF Upload for Active Tenant
   const handleFileUpload = async (file: File | undefined) => {
     if (!file) return;
-
-    if (file.type !== "application/pdf" && !file.name.endsWith('.pdf')) {
+    if (file.type !== 'application/pdf' && !file.name.endsWith('.pdf')) {
       setUploadStatus({ status: 'error', message: 'Only PDF files are supported.' });
       return;
     }
-
     setUploadStatus({ status: 'uploading', message: `Uploading ${file.name} for ${currentProject.name}...` });
-
     const formData = new FormData();
-    formData.append("file", file);
-
+    formData.append('file', file);
     try {
       const response = await fetch(`${API_URL}/upload?widget_id=${activeProjectId}`, {
-        method: "POST",
-        body: formData,
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: formData
       });
-
+      if (handleAuthError(response)) return;
       const data = await response.json();
-
       if (response.ok) {
         setUploadStatus({ status: 'success', message: data.message });
         fetchStats(activeProjectId);
@@ -253,25 +321,20 @@ export default function Dashboard() {
     } catch {
       setUploadStatus({ status: 'error', message: 'Failed to connect to the backend API server.' });
     }
-
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // Handle Web URL Crawling
   const handleUrlScrape = async () => {
     if (!inputUrl.trim()) return;
-
     setScrapeStatus({ status: 'scraping', message: `Crawling website ${inputUrl}...` });
-
     try {
       const response = await fetch(`${API_URL}/scrape`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ url: inputUrl.trim(), widget_id: activeProjectId })
       });
-
+      if (handleAuthError(response)) return;
       const data = await response.json();
-
       if (response.ok) {
         setScrapeStatus({ status: 'success', message: data.message });
         setInputUrl('');
@@ -284,37 +347,59 @@ export default function Dashboard() {
     }
   };
 
+  const handleDeleteDocument = async (sourceName: string) => {
+    if (!window.confirm(`Are you sure you want to delete source '${sourceName}' from '${currentProject.name}'?`)) return;
+    setDeletingSource(sourceName);
+    try {
+      const res = await fetch(`${API_URL}/api/documents`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ source: sourceName, widget_id: activeProjectId })
+      });
+      if (handleAuthError(res)) return;
+      const data = await res.json();
+      if (res.ok) {
+        alert(data.message || 'Document deleted successfully!');
+        fetchStats(activeProjectId);
+      } else {
+        alert('Failed to delete document: ' + (data.detail || 'Unknown error'));
+      }
+    } catch {
+      alert('Error connecting to backend server.');
+    } finally {
+      setDeletingSource(null);
+    }
+  };
 
-  // Handle Vector DB Reset for Active Tenant
   const handleResetBrain = async () => {
-    if (!window.confirm(`Are you sure you want to reset the Knowledge Base for '${currentProject.name}'? Only vectors for this business will be cleared.`)) return;
-
+    if (!window.confirm(`Reset the Knowledge Base for '${currentProject.name}'? Only vectors for this business will be cleared.`)) return;
     setIsResetting(true);
     try {
-      const res = await fetch(`${API_URL}/reset?widget_id=${activeProjectId}`, { method: "POST" });
+      const res = await fetch(`${API_URL}/reset?widget_id=${activeProjectId}`, {
+        method: 'POST',
+        headers: getAuthHeaders()
+      });
+      if (handleAuthError(res)) { setIsResetting(false); return; }
       const data = await res.json();
       if (res.ok) {
         alert(`Knowledge Base for '${currentProject.name}' reset successfully!`);
         fetchStats(activeProjectId);
       } else {
-        alert("Error resetting database: " + data.detail);
+        alert('Error resetting database: ' + data.detail);
       }
     } catch {
-      alert("Failed to connect to backend server.");
+      alert('Failed to connect to backend server.');
     } finally {
       setIsResetting(false);
     }
   };
 
-  // Handle Playground Question Submit
   const handleSendQuestion = async () => {
     if (!inputQuestion.trim() || isThinking) return;
-
     const userMsg = inputQuestion.trim();
     setInputQuestion('');
     setPlaygroundMessages(prev => [...prev, { role: 'user', content: userMsg }]);
     setIsThinking(true);
-
     try {
       const res = await fetch(`${API_URL}/chat`, {
         method: 'POST',
@@ -323,7 +408,11 @@ export default function Dashboard() {
       });
       const data = await res.json();
       if (res.ok) {
-        setPlaygroundMessages(prev => [...prev, { role: 'assistant', content: data.answer }]);
+        setPlaygroundMessages(prev => [...prev, { 
+          role: 'assistant', 
+          content: data.answer,
+          sources: data.sources || []
+        }]);
         fetchAnalytics(activeProjectId);
       } else {
         setPlaygroundMessages(prev => [...prev, { role: 'assistant', content: 'Error getting answer from BrainDesk AI.' }]);
@@ -335,23 +424,44 @@ export default function Dashboard() {
     }
   };
 
+  const getBasename = (str: string) => {
+    try {
+      if (str.startsWith('http')) {
+        const u = new URL(str);
+        return u.hostname + u.pathname;
+      }
+      return str.split(/[\\/]/).pop() || str;
+    } catch {
+      return str;
+    }
+  };
+
+  const navItems = [
+    { tab: 'overview' as const,    icon: '📊', label: 'Overview' },
+    { tab: 'playground' as const,  icon: '💬', label: 'AI Playground' },
+    { tab: 'documents' as const,   icon: '📄', label: 'Knowledge Base', adminOnly: true },
+    { tab: 'analytics' as const,   icon: '📈', label: 'Analytics & Intelligence' },
+    { tab: 'widget' as const,      icon: '⚙️', label: 'Widget Studio', adminOnly: true },
+    { tab: 'integration' as const, icon: '🔌', label: 'Integration Guide' },
+  ].filter(item => !item.adminOnly || userRole === 'admin');
+
   return (
     <div className="dashboard-layout">
-      {/* Sidebar */}
+      {/* ───────── SIDEBAR ───────── */}
       <aside className="sidebar">
         <div className="sidebar-top-section">
-          <Logo size="small" style={{ marginBottom: '32px' }} />
+          <Logo size="small" style={{ marginBottom: '28px' }} />
 
-          <nav className="nav-menu">
-          {/* Admin Project Selector Box */}
+          {/* Admin Project Selector */}
           {userRole === 'admin' && (
             <div className="project-selector-box">
               <div className="project-selector-label">
-                ACTIVE BUSINESS PROJECT
-                <button 
+                <span>Active Business Project</span>
+                <button
                   onClick={handleAddProject}
-                  className="btn-text" style={{ fontSize: '11px', color: 'var(--accent-cyan)', padding: 0, border: 'none', background: 'none', cursor: 'pointer' }}>
-                  + New Project
+                  style={{ fontSize: '11px', color: 'var(--accent-cyan)', padding: 0, border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700 }}
+                >
+                  + New
                 </button>
               </div>
               <select
@@ -360,216 +470,203 @@ export default function Dashboard() {
                 onChange={(e) => setActiveProjectId(e.target.value)}
               >
                 {projects.map(p => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
+                  <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select>
             </div>
           )}
 
+          {/* Nav Links */}
           <nav className="nav-links">
-            <div
-              className={`nav-item ${activeTab === 'overview' ? 'active' : ''}`}
-              onClick={() => setActiveTab('overview')}
-            >
-              <span>📊</span> Overview
-            </div>
-
-            <div
-              className={`nav-item ${activeTab === 'playground' ? 'active' : ''}`}
-              onClick={() => setActiveTab('playground')}
-            >
-              <span>💬</span> AI Playground
-            </div>
-
-            <div
-              className={`nav-item ${activeTab === 'documents' ? 'active' : ''}`}
-              onClick={() => setActiveTab('documents')}
-            >
-              <span>📄</span> Knowledge Base
-            </div>
-
-            <div
-              className={`nav-item ${activeTab === 'analytics' ? 'active' : ''}`}
-              onClick={() => setActiveTab('analytics')}
-            >
-              <span>📈</span> Analytics & Insights
-            </div>
-
-            <div
-              className={`nav-item ${activeTab === 'widget' ? 'active' : ''}`}
-              onClick={() => setActiveTab('widget')}
-            >
-              <span>⚙️</span> Widget Studio
-            </div>
+            {navItems.map(({ tab, icon, label }) => (
+              <div
+                key={tab}
+                className={`nav-item ${activeTab === tab ? 'active' : ''}`}
+                onClick={() => setActiveTab(tab)}
+              >
+                <span>{icon}</span>
+                {label}
+              </div>
+            ))}
           </nav>
-        </nav>
         </div>
 
-        {/* Status / Footer */}
+        {/* Sidebar Footer */}
         <div className="sidebar-footer">
           <div className="status-badge">
-            <span className="status-dot"></span>
-            BrainDesk Backend: Online
+            <span className="status-dot" />
+            Backend: Online
           </div>
         </div>
       </aside>
 
-      {/* Main Content Area */}
+      {/* ───────── MAIN CONTENT ───────── */}
       <main className="main-content">
-        {/* Topbar Header */}
+        {/* Topbar */}
         <header className="topbar">
           <div className="topbar-search">
-            <span>🔍</span>
-            <input type="text" placeholder={`Search across ${currentProject.name}...`} />
+            <span style={{ fontSize: '14px', color: 'var(--text-muted)' }}>🔍</span>
+            <input type="text" placeholder={`Search ${currentProject.name}...`} />
           </div>
           <div className="topbar-actions">
-            <button className="btn-secondary" style={{ padding: '8px 12px' }}>🔔</button>
-            <div className="topbar-avatar" title={userRole === 'admin' ? "Admin Account" : "Client Account"}>
+            <button className="btn-secondary" style={{ padding: '8px 12px', lineHeight: 1 }}>🔔</button>
+            <div className="topbar-avatar" title={userRole === 'admin' ? 'Admin Account' : 'Client Account'}>
               {userRole === 'admin' ? 'AD' : 'CL'}
             </div>
-            <button className="btn-danger" style={{ padding: '8px 12px', fontSize: '13px' }} onClick={handleLogout}>
+            <button className="btn-danger" style={{ padding: '8px 16px', fontSize: '13px' }} onClick={handleLogout}>
               Logout
             </button>
           </div>
         </header>
 
         <div className="main-scroll-area">
-          {/* OVERVIEW TAB */}
+
+          {/* ═══════════════ OVERVIEW TAB ═══════════════ */}
           {activeTab === 'overview' && (
             <div className="animate-fade-in">
-              <header className="header">
+              <div className="header">
                 <div>
                   <h1>Dashboard Overview</h1>
-                  <p>Workspace: <strong>{currentProject.name}</strong></p>
-                </div>
-              </header>
-
-            <div className="stats-grid">
-              <div className="stat-card glass-panel">
-                <div className="stat-icon" style={{ color: '#6366f1' }}>⚡</div>
-                <div className="stat-info">
-                  <h4>Indexed Chunks</h4>
-                  <div className="stat-value">{dbStats.total_chunks}</div>
+                  <p>Welcome back! Managing AI support for <strong>{currentProject.name}</strong>.</p>
                 </div>
               </div>
 
-              <div className="stat-card glass-panel">
-                <div className="stat-icon" style={{ color: '#10b981' }}>📈</div>
-                <div className="stat-info">
-                  <h4>Resolution Rate</h4>
-                  <div className="stat-value" style={{ color: 'var(--accent-emerald)' }}>{analyticsData.resolution_rate_pct}%</div>
+              <div className="stats-grid">
+                <div className="stat-card glass-panel">
+                  <div className="stat-icon" style={{ color: 'var(--accent-indigo)' }}>⚡</div>
+                  <div className="stat-info">
+                    <h4>Indexed Vector Chunks</h4>
+                    <div className="stat-value">{dbStats.total_chunks}</div>
+                  </div>
+                </div>
+
+                <div className="stat-card glass-panel">
+                  <div className="stat-icon" style={{ color: 'var(--accent-cyan)' }}>📁</div>
+                  <div className="stat-info">
+                    <h4>Active Document Sources</h4>
+                    <div className="stat-value">{dbStats.documents?.length || 0}</div>
+                  </div>
+                </div>
+
+                <div className="stat-card glass-panel">
+                  <div className="stat-icon" style={{ color: 'var(--accent-emerald)' }}>💬</div>
+                  <div className="stat-info">
+                    <h4>Total Queries Handled</h4>
+                    <div className="stat-value">{analyticsData.total_queries}</div>
+                  </div>
                 </div>
               </div>
 
-              <div className="stat-card glass-panel">
-                <div className="stat-icon" style={{ color: '#ec4899' }}>⚠️</div>
-                <div className="stat-info">
-                  <h4>Unanswered Queries</h4>
-                  <div className="stat-value" style={{ color: '#f472b6' }}>{analyticsData.total_unanswered}</div>
+              {/* Quick Actions */}
+              <div className="glass-panel section-panel">
+                <div className="section-title">🚀 Quick Management</div>
+                <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
+                  <button className="btn-primary" onClick={() => setActiveTab('playground')}>
+                    💬 Launch AI Playground
+                  </button>
+                  {userRole === 'admin' && (
+                    <>
+                      <button className="btn-secondary" onClick={() => setActiveTab('documents')}>
+                        📄 Manage Knowledge Base
+                      </button>
+                      <button className="btn-secondary" onClick={() => setActiveTab('widget')}>
+                        ⚙️ Get HTML Widget Snippet
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
+          )}
 
-            <div className="glass-panel" style={{ padding: '32px', marginBottom: '32px' }}>
-              <h2 style={{ fontSize: '20px', marginBottom: '12px' }}>✨ BrainDesk Multi-Tenant Guide</h2>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginTop: '20px' }}>
-                <div style={{ background: 'rgba(255,255,255,0.03)', padding: '20px', borderRadius: '12px', border: '1px solid var(--border-subtle)' }}>
-                  <div style={{ fontSize: '24px', marginBottom: '10px' }}>1️⃣</div>
-                  <h4 style={{ marginBottom: '6px' }}>Select or Create Project</h4>
-                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Use the sidebar dropdown to switch between business clients or add new ones.</p>
+          {/* ═══════════════ PLAYGROUND TAB ═══════════════ */}
+          {activeTab === 'playground' && (
+            <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+              <div className="header">
+                <div>
+                  <h1>Live AI Sandbox Playground</h1>
+                  <p>Interact live with the AI model for <strong>{currentProject.name}</strong> with real-time vector search &amp; source citations.</p>
+                </div>
+              </div>
+
+              <div className="playground-container glass-panel" style={{ flex: 1, minHeight: 0 }}>
+                <div className="chat-messages-area">
+                  {playgroundMessages.map((msg, idx) => (
+                    <div key={idx} className={`chat-bubble ${msg.role}`}>
+                      <div style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</div>
+
+                      {/* Source Citations Display */}
+                      {msg.role === 'assistant' && msg.sources && msg.sources.length > 0 && (
+                        <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>Citations:</span>
+                          {msg.sources.map((src, sIdx) => (
+                            <span
+                              key={sIdx}
+                              title={src}
+                              style={{
+                                fontSize: '11px',
+                                background: 'rgba(99,102,241,0.2)',
+                                color: 'var(--accent-cyan)',
+                                border: '1px solid rgba(99,102,241,0.4)',
+                                padding: '2px 8px',
+                                borderRadius: '4px'
+                              }}
+                            >
+                              {getBasename(src)}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                  {isThinking && (
+                    <div className="chat-bubble assistant" style={{ fontStyle: 'italic', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span>⏳</span>
+                      BrainDesk AI is searching the knowledge base &amp; generating a response...
+                    </div>
+                  )}
+                  <div ref={chatBottomRef} />
                 </div>
 
-                <div style={{ background: 'rgba(255,255,255,0.03)', padding: '20px', borderRadius: '12px', border: '1px solid var(--border-subtle)' }}>
-                  <div style={{ fontSize: '24px', marginBottom: '10px' }}>2️⃣</div>
-                  <h4 style={{ marginBottom: '6px' }}>Upload Dedicated Docs</h4>
-                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Upload PDFs for {currentProject.name}. All vector data is isolated under <code>{activeProjectId}</code>.</p>
-                </div>
-
-                <div style={{ background: 'rgba(255,255,255,0.03)', padding: '20px', borderRadius: '12px', border: '1px solid var(--border-subtle)' }}>
-                  <div style={{ fontSize: '24px', marginBottom: '10px' }}>3️⃣</div>
-                  <h4 style={{ marginBottom: '6px' }}>View Analytics Intelligence</h4>
-                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Check the Analytics tab to see unanswered questions and missing info in your PDFs!</p>
+                <div className="chat-input-bar">
+                  <input
+                    type="text"
+                    placeholder={`Ask a question about ${currentProject.name}...`}
+                    value={inputQuestion}
+                    onChange={(e) => setInputQuestion(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && !isThinking && handleSendQuestion()}
+                    disabled={isThinking}
+                  />
+                  <button className="btn-primary" onClick={handleSendQuestion} disabled={isThinking}>
+                    {isThinking ? 'Thinking...' : 'Send 🚀'}
+                  </button>
                 </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* AI PLAYGROUND TAB */}
-        {activeTab === 'playground' && (
-          <div className="animate-fade-in">
-            <header className="header">
-              <div>
-                <h1>AI Chat Playground</h1>
-                <p>Test <strong>{currentProject.name}</strong> AI responses live inside the dashboard sandbox.</p>
-              </div>
-              <button className="btn-secondary" onClick={() => setPlaygroundMessages([{ role: 'assistant', content: `Chat cleared for ${currentProject.name}. How can I help?` }])}>
-                🧹 Clear Chat
-              </button>
-            </header>
-
-            <div className="playground-container glass-panel">
-              <div className="playground-header">
-                <h3><span>✨</span> {botName} ({currentProject.name})</h3>
-                <span className="status-badge"><span className="status-dot"></span> Ready</span>
-              </div>
-
-              <div className="chat-messages-box">
-                {playgroundMessages.map((msg, index) => (
-                  <div key={index} className={`chat-bubble ${msg.role}`}>
-                    {msg.content}
-                  </div>
-                ))}
-                {isThinking && (
-                  <div className="chat-bubble assistant" style={{ fontStyle: 'italic', opacity: 0.8 }}>
-                    BrainDesk AI is retrieving {currentProject.name} documents & thinking...
-                  </div>
-                )}
-                <div ref={chatBottomRef} />
-              </div>
-
-              <div className="chat-input-row">
-                <input
-                  type="text"
-                  placeholder={`Ask a question about ${currentProject.name}...`}
-                  value={inputQuestion}
-                  onChange={(e) => setInputQuestion(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSendQuestion()}
-                />
-                <button className="btn-primary" onClick={handleSendQuestion} disabled={isThinking}>
-                  Send 🚀
+          {/* ═══════════════ KNOWLEDGE BASE TAB ═══════════════ */}
+          {activeTab === 'documents' && (
+            <div className="animate-fade-in">
+              <div className="header">
+                <div>
+                  <h1>Knowledge Base</h1>
+                  <p>Upload PDFs or crawl website URLs for <strong>{currentProject.name}</strong>.</p>
+                </div>
+                <button className="btn-danger" onClick={handleResetBrain} disabled={isResetting}>
+                  {isResetting ? 'Resetting...' : `🗑️ Reset Brain`}
                 </button>
               </div>
-            </div>
-          </div>
-        )}
 
-        {/* KNOWLEDGE BASE DOCUMENTS TAB */}
-        {activeTab === 'documents' && (
-          <div className="animate-fade-in">
-            <header className="header">
-              <div>
-                <h1>Knowledge Base Management</h1>
-                <p>Upload PDFs or crawl website URLs for <strong>{currentProject.name}</strong>.</p>
-              </div>
-              <button className="btn-danger" onClick={handleResetBrain} disabled={isResetting}>
-                {isResetting ? "Resetting..." : `🗑️ Reset ${currentProject.name} Brain`}
-              </button>
-            </header>
-
-            {/* Ingestion Options Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '32px' }}>
-              {/* PDF Uploader */}
-              <div className="glass-panel" style={{ padding: '28px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                <div>
-                  <h3 style={{ fontSize: '18px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {/* Ingestion Grid */}
+              <div className="ingestion-grid">
+                {/* PDF Uploader */}
+                <div className="glass-panel section-panel">
+                  <div className="section-title">
                     <span>📄</span> PDF Document Upload
-                  </h3>
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '20px' }}>
-                    Upload employee handbooks, pricing PDFs, menus, or FAQs.
-                  </p>
+                  </div>
+                  <p className="section-subtitle">Upload employee handbooks, pricing PDFs, menus, or FAQs.</p>
 
                   <div
                     className="upload-dropzone"
@@ -579,11 +676,10 @@ export default function Dashboard() {
                       e.preventDefault();
                       if (e.dataTransfer.files?.[0]) handleFileUpload(e.dataTransfer.files[0]);
                     }}
-                    style={{ padding: '36px 20px' }}
                   >
-                    <div className="upload-icon" style={{ fontSize: '36px' }}>📄</div>
-                    <h4 style={{ fontSize: '16px', marginBottom: '6px' }}>Drop PDF file here</h4>
-                    <p style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>Click or drag PDF up to 50MB</p>
+                    <div className="upload-icon">📄</div>
+                    <h4 style={{ fontSize: '15px', marginBottom: '5px' }}>Drop PDF file here</h4>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Click or drag PDF · up to 50MB</p>
                     <input
                       type="file"
                       accept="application/pdf"
@@ -592,321 +688,492 @@ export default function Dashboard() {
                       onChange={(e) => handleFileUpload(e.target.files?.[0])}
                     />
                   </div>
+
+                  {uploadStatus.status !== 'idle' && (
+                    <div className={`upload-status ${uploadStatus.status}`}>
+                      <p>{uploadStatus.message}</p>
+                    </div>
+                  )}
                 </div>
 
-                {uploadStatus.status !== 'idle' && (
-                  <div className={`upload-status ${uploadStatus.status}`} style={{ marginTop: '16px', fontSize: '13px' }}>
-                    <p>{uploadStatus.message}</p>
+                {/* Web URL Crawler */}
+                <div className="glass-panel section-panel">
+                  <div className="section-title">
+                    <span>🌐</span> Web URL Crawler
                   </div>
-                )}
-              </div>
-
-              {/* Web URL Crawler */}
-              <div className="glass-panel" style={{ padding: '28px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                <div>
-                  <h3 style={{ fontSize: '18px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span>🌐</span> Web URL Scraper & Crawler
-                  </h3>
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '20px' }}>
-                    Type any website link to scrape live web text automatically into ChromaDB.
-                  </p>
+                  <p className="section-subtitle">Paste any website link to scrape live web text automatically into the knowledge base.</p>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <input
+                      className="url-input"
                       type="text"
                       placeholder="e.g. https://mybusiness.com/faq"
                       value={inputUrl}
                       onChange={(e) => setInputUrl(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && handleUrlScrape()}
-                      style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)', borderRadius: '8px', padding: '12px 14px', color: '#fff', fontSize: '14px', outline: 'none' }}
                     />
                     <button className="btn-primary" onClick={handleUrlScrape} disabled={scrapeStatus.status === 'scraping'}>
-                      {scrapeStatus.status === 'scraping' ? "Crawling Web Page..." : "🌐 Crawl & Index Website"}
+                      {scrapeStatus.status === 'scraping' ? 'Crawling Web Page...' : '🌐 Crawl & Index Website'}
                     </button>
                   </div>
+
+                  {scrapeStatus.status !== 'idle' && (
+                    <div className={`upload-status ${scrapeStatus.status}`} style={{ marginTop: '16px' }}>
+                      <p>{scrapeStatus.message}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Active Knowledge Sources */}
+              <div className="glass-panel section-panel">
+                <div className="section-title">📊 Active Knowledge Sources ({currentProject.name})</div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '18px', marginBottom: '22px', flexWrap: 'wrap' }}>
+                  <div style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid var(--accent-indigo)', padding: '14px 22px', borderRadius: '12px', flexShrink: 0 }}>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Indexed Chunks
+                    </div>
+                    <div style={{ fontSize: '26px', fontWeight: '800', color: 'var(--accent-indigo)', lineHeight: 1 }}>
+                      {dbStats.total_chunks}
+                    </div>
+                  </div>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '13px', lineHeight: 1.6 }}>
+                    BrainDesk RAG searches PDF documents and crawled URLs tagged with <code>widget_id: "{activeProjectId}"</code>.
+                  </p>
                 </div>
 
-                {scrapeStatus.status !== 'idle' && (
-                  <div className={`upload-status ${scrapeStatus.status}`} style={{ marginTop: '16px', fontSize: '13px' }}>
-                    <p>{scrapeStatus.message}</p>
+                {dbStats.detailed_documents && dbStats.detailed_documents.length > 0 ? (
+                  <div>
+                    <h4 style={{ fontSize: '12px', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '12px', letterSpacing: '0.6px' }}>
+                      📁 Managed Documents &amp; Sources ({dbStats.detailed_documents.length})
+                    </h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '14px' }}>
+                      {dbStats.detailed_documents.map((docItem, idx) => {
+                        const isWeb = docItem.type === 'web' || docItem.source.startsWith('http');
+                        return (
+                          <div
+                            key={idx}
+                            style={{
+                              background: 'var(--bg-tertiary)',
+                              border: '1px solid var(--border-subtle)',
+                              borderRadius: '10px',
+                              padding: '14px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              justifyContent: 'space-between',
+                              gap: '10px'
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                              <span style={{ fontSize: '20px' }}>{isWeb ? '🌐' : '📄'}</span>
+                              <div style={{ overflow: 'hidden' }}>
+                                <div style={{ fontWeight: 600, fontSize: '14px', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={docItem.source}>
+                                  {docItem.title || getBasename(docItem.source)}
+                                </div>
+                                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px', wordBreak: 'break-all' }}>
+                                  {docItem.source}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px', marginTop: '4px' }}>
+                              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: isWeb ? 'rgba(6,182,212,0.18)' : 'rgba(16,185,129,0.18)', color: isWeb ? 'var(--accent-cyan)' : 'var(--accent-emerald)', fontWeight: 600 }}>
+                                  {isWeb ? 'Web URL' : 'PDF Document'}
+                                </span>
+                                <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                  {docItem.chunks} {docItem.chunks === 1 ? 'chunk' : 'chunks'}
+                                </span>
+                              </div>
+                              <button
+                                className="btn-danger"
+                                style={{ padding: '4px 10px', fontSize: '11px' }}
+                                disabled={deletingSource === docItem.source}
+                                onClick={() => handleDeleteDocument(docItem.source)}
+                              >
+                                {deletingSource === docItem.source ? 'Deleting...' : '🗑️ Delete'}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="empty-state">
+                    No documents indexed for <strong>{currentProject.name}</strong> yet. Upload a PDF or crawl a website URL above!
                   </div>
                 )}
               </div>
             </div>
+          )}
 
-            {/* Active Documents & Database Status */}
-            <div className="glass-panel" style={{ padding: '28px' }}>
-              <h3 style={{ fontSize: '18px', marginBottom: '16px' }}>📊 Active Knowledge Sources ({currentProject.name})</h3>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '24px' }}>
-                <div style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid var(--accent-indigo)', padding: '16px 24px', borderRadius: '12px' }}>
-                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>TOTAL INDEXED CHUNKS ({activeProjectId})</div>
-                  <div style={{ fontSize: '28px', fontWeight: '800', color: 'var(--accent-indigo)' }}>{dbStats.total_chunks}</div>
-                </div>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '14px', maxWidth: '450px' }}>
-                  BrainDesk RAG searches both PDF documents and Crawled Website URLs tagged with <code>widget_id: "{activeProjectId}"</code>.
-                </p>
-              </div>
-
-              {dbStats.documents && dbStats.documents.length > 0 ? (
+          {/* ═══════════════ ANALYTICS & LEADS TAB ═══════════════ */}
+          {activeTab === 'analytics' && (
+            <div className="animate-fade-in">
+              <div className="header">
                 <div>
-                  <h4 style={{ fontSize: '14px', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '12px', letterSpacing: '0.5px' }}>
-                    📁 Active Knowledge Files & URLs ({dbStats.documents.length}):
-                  </h4>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-                    {dbStats.documents.map((doc, idx) => {
-                      const isWeb = doc.startsWith("http://") || doc.startsWith("https://");
-                      return (
-                        <div key={idx} style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-active)', padding: '10px 16px', borderRadius: '8px', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px', maxWidth: '100%', overflow: 'hidden' }}>
-                          <span>{isWeb ? "🌐" : "📄"}</span>
-                          <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '300px' }}>{doc}</strong>
-                          <span style={{ fontSize: '11px', background: isWeb ? 'rgba(6,182,212,0.2)' : 'rgba(16,185,129,0.2)', color: isWeb ? 'var(--accent-cyan)' : 'var(--accent-emerald)', padding: '2px 6px', borderRadius: '4px' }}>
-                            {isWeb ? "Web URL" : "PDF File"}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <h1>Analytics &amp; Intelligence</h1>
+                  <p>Track conversation performance, missing answers, &amp; visitor leads for <strong>{currentProject.name}</strong>.</p>
                 </div>
-              ) : (
-                <div style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', color: 'var(--text-muted)', fontSize: '14px' }}>
-                  No documents or URLs indexed for <strong>{currentProject.name}</strong> yet. Upload a PDF or Crawl a Website URL above to populate your AI brain!
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-
-        {/* ANALYTICS & INSIGHTS TAB */}
-        {activeTab === 'analytics' && (
-          <div className="animate-fade-in">
-            <header className="header">
-              <div>
-                <h1>AI Analytics & Intelligence</h1>
-                <p>Track conversation performance & missing document details for <strong>{currentProject.name}</strong>.</p>
-              </div>
-              <button className="btn-secondary" onClick={handleClearAnalytics}>
-                🧹 Clear Analytics Logs
-              </button>
-            </header>
-
-            {/* Metrics */}
-            <div className="stats-grid">
-              <div className="stat-card glass-panel">
-                <div className="stat-icon" style={{ color: '#06b6d4' }}>💬</div>
-                <div className="stat-info">
-                  <h4>Total Questions</h4>
-                  <div className="stat-value">{analyticsData.total_queries}</div>
-                </div>
-              </div>
-
-              <div className="stat-card glass-panel">
-                <div className="stat-icon" style={{ color: '#10b981' }}>🎯</div>
-                <div className="stat-info">
-                  <h4>Resolution Rate</h4>
-                  <div className="stat-value" style={{ color: 'var(--accent-emerald)' }}>{analyticsData.resolution_rate_pct}%</div>
-                </div>
-              </div>
-
-              <div className="stat-card glass-panel">
-                <div className="stat-icon" style={{ color: '#ec4899' }}>⚠️</div>
-                <div className="stat-info">
-                  <h4>Unanswered Queries</h4>
-                  <div className="stat-value" style={{ color: '#f472b6' }}>{analyticsData.total_unanswered}</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Unanswered Intelligence Card */}
-            <div className="glass-panel" style={{ padding: '28px', marginBottom: '32px' }}>
-              <h3 style={{ fontSize: '18px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span>💡</span> Unanswered Questions Intelligence
-              </h3>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '20px' }}>
-                These are questions customers asked where the AI replied *"I don't have that information"*. Update your PDFs to include these missing details!
-              </p>
-
-              {analyticsData.top_unanswered && analyticsData.top_unanswered.length > 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {analyticsData.top_unanswered.map((item, idx) => (
-                    <div key={idx} style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', padding: '14px 18px', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ fontSize: '14px', fontWeight: 600, color: '#fca5a5' }}>
-                        ❓ "{item.question}"
-                      </div>
-                      <div style={{ fontSize: '12px', background: 'rgba(239,68,68,0.2)', color: '#ffffff', padding: '4px 10px', borderRadius: '20px', fontWeight: 700 }}>
-                        Asked {item.count} time{item.count > 1 ? 's' : ''}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div style={{ padding: '16px', background: 'rgba(16,185,129,0.05)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '10px', color: 'var(--accent-emerald)', fontSize: '14px', fontWeight: 600 }}>
-                  🎉 Great job! No unanswered customer questions flagged for {currentProject.name}.
-                </div>
-              )}
-            </div>
-
-            {/* Conversation Log Feed */}
-            <div className="glass-panel" style={{ padding: '28px' }}>
-              <h3 style={{ fontSize: '18px', marginBottom: '16px' }}>📜 Recent Customer Conversation Logs</h3>
-
-              {analyticsData.recent_logs && analyticsData.recent_logs.length > 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '420px', overflowY: 'auto' }}>
-                  {analyticsData.recent_logs.map(log => (
-                    <div key={log.id} style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)', padding: '16px', borderRadius: '10px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                        <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{log.timestamp}</span>
-                        {log.is_unanswered ? (
-                          <span style={{ fontSize: '11px', background: 'rgba(239,68,68,0.2)', color: '#fca5a5', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
-                            ⚠️ Unanswered / Needs Info
-                          </span>
-                        ) : (
-                          <span style={{ fontSize: '11px', background: 'rgba(16,185,129,0.2)', color: 'var(--accent-emerald)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
-                            ✅ Answered from PDF
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: '14px', fontWeight: 700, marginBottom: '6px', color: 'var(--text-primary)' }}>
-                        Q: {log.question}
-                      </div>
-                      <div style={{ fontSize: '13px', color: 'var(--text-secondary)', background: 'rgba(0,0,0,0.2)', padding: '10px 12px', borderRadius: '6px' }}>
-                        A: {log.answer}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div style={{ padding: '16px', color: 'var(--text-muted)', fontSize: '14px' }}>
-                  No customer conversations logged for {currentProject.name} yet. Ask a question in the Playground to see logs appear here live!
-                </div>
-              )}
-            </div>
-
-          </div>
-        )}
-
-        {/* WIDGET STUDIO & CUSTOMIZER TAB */}
-        {activeTab === 'widget' && (
-          <div className="animate-fade-in">
-            <header className="header">
-              <div>
-                <h1>Widget Customization Studio</h1>
-                <p>Configure widget branding for <strong>{currentProject.name}</strong>.</p>
-              </div>
-            </header>
-
-            <div className="customizer-grid">
-              {/* Controls */}
-              <div>
-                <div className="glass-panel" style={{ padding: '28px', marginBottom: '24px' }}>
-                  <h3 style={{ fontSize: '18px', marginBottom: '20px' }}>🎨 Appearance & Branding</h3>
-
-                  <div className="form-group">
-                    <label>Bot Name</label>
-                    <input
-                      type="text"
-                      value={botName}
-                      onChange={(e) => setBotName(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Welcome Message</label>
-                    <input
-                      type="text"
-                      value={greetingMsg}
-                      onChange={(e) => setGreetingMsg(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Primary Brand Accent Color</label>
-                    <div className="color-options">
-                      {['#6366f1', '#06b6d4', '#8b5cf6', '#ec4899', '#10b981', '#f59e0b'].map(color => (
-                        <div
-                          key={color}
-                          className={`color-swatch ${primaryColor === color ? 'selected' : ''}`}
-                          style={{ background: color }}
-                          onClick={() => setPrimaryColor(color)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="form-group">
-                    <label>Screen Position</label>
-                    <select
-                      value={position}
-                      onChange={(e) => setPosition(e.target.value as 'bottom-right' | 'bottom-left')}
-                    >
-                      <option value="bottom-right">Bottom Right Corner</option>
-                      <option value="bottom-left">Bottom Left Corner</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="glass-panel" style={{ padding: '28px' }}>
-                  <h3 style={{ fontSize: '18px', marginBottom: '12px' }}>📋 HTML Embed Code</h3>
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '16px' }}>
-                    Paste this snippet before the closing <code>&lt;/body&gt;</code> tag on {currentProject.name}'s website:
-                  </p>
-
-                  <div className="code-box">
-                    {widgetCode}
-                  </div>
-
-                  <button className="btn-primary" onClick={handleCopy} style={{ width: '100%' }}>
-                    {copied ? "✅ Copied Embed Code!" : "📋 Copy HTML Snippet Tag"}
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button className="btn-secondary" onClick={handleExportCSV}>
+                    📥 Export CSV
+                  </button>
+                  <button className="btn-danger" onClick={handleClearAnalytics}>
+                    🧹 Clear Logs
                   </button>
                 </div>
               </div>
 
-              {/* Live Preview */}
-              <div>
+              {/* Analytics Sub-Tab Navigation */}
+              <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
+                <button
+                  className={`btn-secondary ${analyticsSubTab === 'intelligence' ? 'active-tab-btn' : ''}`}
+                  style={{ background: analyticsSubTab === 'intelligence' ? 'var(--accent-indigo)' : 'var(--bg-tertiary)', color: '#fff' }}
+                  onClick={() => setAnalyticsSubTab('intelligence')}
+                >
+                  💡 Query Intelligence &amp; Logs
+                </button>
+                <button
+                  className={`btn-secondary ${analyticsSubTab === 'leads' ? 'active-tab-btn' : ''}`}
+                  style={{ background: analyticsSubTab === 'leads' ? 'var(--accent-indigo)' : 'var(--bg-tertiary)', color: '#fff' }}
+                  onClick={() => setAnalyticsSubTab('leads')}
+                >
+                  👥 Captured Leads ({leadsData.length})
+                </button>
+              </div>
+
+              {analyticsSubTab === 'intelligence' && (
+                <>
+                  <div className="stats-grid">
+                    <div className="stat-card glass-panel">
+                      <div className="stat-icon" style={{ color: '#06b6d4' }}>💬</div>
+                      <div className="stat-info">
+                        <h4>Total Questions</h4>
+                        <div className="stat-value">{analyticsData.total_queries}</div>
+                      </div>
+                    </div>
+                    <div className="stat-card glass-panel">
+                      <div className="stat-icon" style={{ color: '#10b981' }}>🎯</div>
+                      <div className="stat-info">
+                        <h4>Resolution Rate</h4>
+                        <div className="stat-value" style={{ color: 'var(--accent-emerald)' }}>
+                          {analyticsData.resolution_rate_pct}%
+                        </div>
+                      </div>
+                    </div>
+                    <div className="stat-card glass-panel">
+                      <div className="stat-icon" style={{ color: '#ec4899' }}>⚠️</div>
+                      <div className="stat-info">
+                        <h4>Unanswered Queries</h4>
+                        <div className="stat-value" style={{ color: '#f472b6' }}>
+                          {analyticsData.total_unanswered}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Unanswered Intelligence */}
+                  <div className="glass-panel section-panel" style={{ marginBottom: '22px' }}>
+                    <div className="section-title"><span>💡</span> Unanswered Questions Intelligence</div>
+                    <p className="section-subtitle">
+                      These are questions where the AI replied "I don't have that information". Update your PDFs to include these missing details!
+                    </p>
+
+                    {analyticsData.top_unanswered?.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {analyticsData.top_unanswered.map((item, idx) => (
+                          <div key={idx} className="unanswered-item">
+                            <div className="unanswered-question">❓ "{item.question}"</div>
+                            <div className="unanswered-count">Asked {item.count} time{item.count > 1 ? 's' : ''}</div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="success-state">
+                        🎉 Great job! No unanswered customer questions flagged for {currentProject.name}.
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Conversation Log Feed */}
+                  <div className="glass-panel section-panel">
+                    <div className="section-title">📜 Recent Conversation Logs</div>
+
+                    {analyticsData.recent_logs?.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '420px', overflowY: 'auto', paddingRight: '4px' }}>
+                        {analyticsData.recent_logs.map(log => (
+                          <div key={log.id} className="log-entry">
+                            <div className="log-header">
+                              <span className="log-timestamp">{log.timestamp}</span>
+                              {log.is_unanswered ? (
+                                <span className="log-status-badge" style={{ background: 'rgba(239,68,68,0.18)', color: '#fca5a5' }}>
+                                  ⚠️ Unanswered
+                                </span>
+                              ) : (
+                                <span className="log-status-badge" style={{ background: 'rgba(16,185,129,0.18)', color: 'var(--accent-emerald)' }}>
+                                  ✅ Answered
+                                </span>
+                              )}
+                            </div>
+                            <div className="log-question">Q: {log.question}</div>
+                            <div className="log-answer">A: {log.answer}</div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="empty-state">
+                        No customer conversations logged for {currentProject.name} yet. Ask a question in the Playground to see logs appear here live!
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {analyticsSubTab === 'leads' && (
+                <div className="glass-panel section-panel">
+                  <div className="section-title">👥 Captured Visitor Leads ({currentProject.name})</div>
+                  <p className="section-subtitle">Visitors who submitted their name &amp; email prior to asking questions in your widget.</p>
+
+                  {leadsData.length > 0 ? (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '12px', fontSize: '13px' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-muted)', textAlign: 'left' }}>
+                            <th style={{ padding: '10px' }}>Date/Time</th>
+                            <th style={{ padding: '10px' }}>Visitor Name</th>
+                            <th style={{ padding: '10px' }}>Email Address</th>
+                            <th style={{ padding: '10px' }}>Widget Tenant ID</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {leadsData.map(lead => (
+                            <tr key={lead.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', color: '#fff' }}>
+                              <td style={{ padding: '10px', color: 'var(--text-muted)' }}>{lead.timestamp}</td>
+                              <td style={{ padding: '10px', fontWeight: 600 }}>{lead.name}</td>
+                              <td style={{ padding: '10px', color: 'var(--accent-cyan)' }}>{lead.email}</td>
+                              <td style={{ padding: '10px', color: 'var(--text-secondary)' }}><code>{lead.widget_id}</code></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="empty-state">
+                      No visitor leads captured yet for <strong>{currentProject.name}</strong>. Enable "Require Lead Info" in Widget Studio to start capturing visitor emails!
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ═══════════════ WIDGET STUDIO TAB ═══════════════ */}
+          {activeTab === 'widget' && (
+            <div className="animate-fade-in">
+              <div className="header">
+                <div>
+                  <h1>Widget Studio</h1>
+                  <p>Configure widget branding &amp; lead capture for <strong>{currentProject.name}</strong>.</p>
+                </div>
+              </div>
+
+              <div className="customizer-grid">
+                {/* Controls Column */}
+                <div className="customizer-controls">
+                  <div className="glass-panel section-panel">
+                    <div className="section-title">🎨 Appearance &amp; Branding</div>
+
+                    <div className="form-group">
+                      <label>Bot Name</label>
+                      <input type="text" value={botName} onChange={(e) => setBotName(e.target.value)} />
+                    </div>
+
+                    <div className="form-group">
+                      <label>Welcome Message</label>
+                      <input type="text" value={greetingMsg} onChange={(e) => setGreetingMsg(e.target.value)} />
+                    </div>
+
+                    <div className="form-group">
+                      <label>Primary Brand Color</label>
+                      <div className="color-options">
+                        {['#6366f1', '#06b6d4', '#8b5cf6', '#ec4899', '#10b981', '#f59e0b'].map(color => (
+                          <div
+                            key={color}
+                            className={`color-swatch ${primaryColor === color ? 'selected' : ''}`}
+                            style={{ background: color }}
+                            onClick={() => setPrimaryColor(color)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="form-group">
+                      <label>Screen Position</label>
+                      <select value={position} onChange={(e) => setPosition(e.target.value as 'bottom-right' | 'bottom-left')}>
+                        <option value="bottom-right">Bottom Right Corner</option>
+                        <option value="bottom-left">Bottom Left Corner</option>
+                      </select>
+                    </div>
+
+                    <div className="form-group" style={{ marginTop: '14px' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={requireLead}
+                          onChange={(e) => setRequireLead(e.target.checked)}
+                          style={{ width: '16px', height: '16px', accentColor: primaryColor }}
+                        />
+                        Require Visitor Lead Info (Pre-chat Name/Email)
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="glass-panel section-panel">
+                    <div className="section-title">🧠 Bot Personality (System Prompt)</div>
+                    <p className="section-subtitle">Give your AI custom instructions, guardrails, or define its tone of voice.</p>
+                    
+                    <div className="form-group" style={{ marginBottom: '12px' }}>
+                      <textarea
+                        style={{ width: '100%', height: '100px', resize: 'vertical', padding: '12px', background: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)', borderRadius: '8px', color: '#fff', fontSize: '13px', fontFamily: 'inherit' }}
+                        placeholder="e.g. You are a helpful assistant for HireLoop. Keep answers short and professional. Never mention competitors."
+                        value={systemPrompt}
+                        onChange={(e) => setSystemPrompt(e.target.value)}
+                      />
+                    </div>
+                    <button className="btn-secondary" onClick={handleUpdateSystemPrompt} style={{ width: '100%' }}>
+                      💾 Save Instructions
+                    </button>
+                  </div>
+
+                  <div className="glass-panel section-panel">
+                    <div className="section-title">📋 HTML Embed Code</div>
+                    <p className="section-subtitle">
+                      Paste this snippet before the closing <code>&lt;/body&gt;</code> tag on {currentProject.name}'s website:
+                    </p>
+                    <div className="code-box">{widgetCode}</div>
+                    <button className="btn-primary" onClick={handleCopy} style={{ width: '100%' }}>
+                      {copied ? '✅ Copied!' : '📋 Copy HTML Embed Snippet'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Live Preview Column */}
                 <div className="preview-box">
-                  <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-secondary)', marginBottom: '12px' }}>
-                    👁️ LIVE WIDGET PREVIEW ({currentProject.name})
+                  <div className="preview-label">👁️ Live Widget Preview</div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '-6px', marginBottom: '4px' }}>
+                    {currentProject.name} {requireLead ? '(Lead Form Enabled)' : ''}
                   </div>
 
                   <div className="widget-mockup">
                     <div className="widget-mockup-header" style={{ background: primaryColor }}>
-                      <div>{botName}</div>
-                      <span style={{ fontSize: '12px', opacity: 0.8 }}>● Online</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '12px' }}>🤖</span>
+                        {botName}
+                      </div>
+                      <span style={{ fontSize: '11px', opacity: 0.85 }}>● Online</span>
                     </div>
 
-                    <div className="widget-mockup-body">
-                      <div className="chat-bubble assistant" style={{ fontSize: '13px', background: 'var(--bg-tertiary)', marginBottom: '12px' }}>
-                        {greetingMsg}
+                    {requireLead ? (
+                      <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '10px', height: '100%', justifyContent: 'center' }}>
+                        <div style={{ fontSize: '13px', color: '#fff', textAlign: 'center', marginBottom: '8px' }}>
+                          Welcome! Please introduce yourself to start chatting.
+                        </div>
+                        <input
+                          type="text"
+                          readOnly
+                          placeholder="Your Name *"
+                          style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)', padding: '10px', borderRadius: '6px', color: '#fff', fontSize: '12px' }}
+                        />
+                        <input
+                          type="email"
+                          readOnly
+                          placeholder="Your Email *"
+                          style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)', padding: '10px', borderRadius: '6px', color: '#fff', fontSize: '12px' }}
+                        />
+                        <button style={{ background: primaryColor, color: '#fff', padding: '10px', borderRadius: '6px', border: 'none', fontWeight: 600, marginTop: '4px' }}>
+                          Start Chatting
+                        </button>
                       </div>
+                    ) : (
+                      <>
+                        <div className="widget-mockup-body">
+                          <div className="chat-bubble assistant" style={{ fontSize: '13px', background: 'var(--bg-tertiary)' }}>
+                            {greetingMsg}
+                          </div>
+                          <div className="chat-bubble user" style={{ fontSize: '13px', background: primaryColor }}>
+                            What are your operating hours?
+                          </div>
+                          <div className="chat-bubble assistant" style={{ fontSize: '13px', background: 'var(--bg-tertiary)' }}>
+                            We are open 7 days a week, 9am–9pm!
+                          </div>
+                        </div>
 
-                      <div className="chat-bubble user" style={{ fontSize: '13px', background: primaryColor, marginBottom: '12px', alignSelf: 'flex-end' }}>
-                        What are your operating hours?
-                      </div>
-
-                      <div className="chat-bubble assistant" style={{ fontSize: '13px', background: 'var(--bg-tertiary)' }}>
-                        We are open 7 days a week!
-                      </div>
-                    </div>
-
-                    <div style={{ padding: '12px', borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-secondary)', display: 'flex', gap: '8px' }}>
-                      <input
-                        type="text"
-                        readOnly
-                        placeholder="Type a message..."
-                        style={{ flex: 1, background: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)', borderRadius: '6px', padding: '8px 12px', color: '#fff', fontSize: '12px' }}
-                      />
-                      <button style={{ background: primaryColor, color: '#fff', padding: '8px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: '600' }}>
-                        Send
-                      </button>
-                    </div>
+                        <div className="widget-mockup-input-row">
+                          <input
+                            type="text"
+                            readOnly
+                            placeholder="Type a message..."
+                            style={{ flex: 1, background: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)', borderRadius: '6px', padding: '8px 12px', color: '#fff', fontSize: '12px', fontFamily: 'inherit' }}
+                          />
+                          <button style={{ background: primaryColor, color: '#fff', padding: '8px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: 700, border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                            Send
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
-
-            </div>
             </div>
           )}
+
+          {/* ═══════════════ INTEGRATION TAB ═══════════════ */}
+          {activeTab === 'integration' && (
+            <div className="animate-fade-in">
+              <div className="header">
+                <div>
+                  <h1>Integration Guide</h1>
+                  <p>Step-by-step instructions to add BrainDesk AI to your platform.</p>
+                </div>
+              </div>
+
+              <div className="stats-grid" style={{ gridTemplateColumns: '1fr', gap: '20px' }}>
+                <div className="glass-panel section-panel">
+                  <div className="section-title">🌐 Basic HTML / Vanilla JS</div>
+                  <p className="section-subtitle" style={{ marginBottom: '15px' }}>
+                    For static websites, WordPress (via Custom HTML block), or any site where you can edit the HTML.
+                  </p>
+                  <ol style={{ paddingLeft: '20px', marginBottom: '15px', color: '#eaeaea' }}>
+                    <li style={{ marginBottom: '8px' }}>Navigate to the <strong>Widget Studio</strong> tab and configure your bot's appearance and behavior.</li>
+                    <li style={{ marginBottom: '8px' }}>Click the <strong>Copy HTML Embed Snippet</strong> button to copy your unique code.</li>
+                    <li style={{ marginBottom: '8px' }}>Paste the snippet just before the closing <code>&lt;/body&gt;</code> tag of your website's HTML template.</li>
+                  </ol>
+                  <div className="code-box" style={{ background: '#111827', color: '#e5e7eb', padding: '16px', borderRadius: '8px', fontSize: '13px', whiteSpace: 'pre', overflowX: 'auto' }}>
+                    {`<!-- Paste your BrainDesk AI snippet here -->\n</body>\n</html>`}
+                  </div>
+                </div>
+
+                <div className="glass-panel section-panel">
+                  <div className="section-title">⚛️ React / Next.js / Vite</div>
+                  <p className="section-subtitle" style={{ marginBottom: '15px' }}>
+                    For modern JavaScript applications using React or similar frameworks.
+                  </p>
+                  <ol style={{ paddingLeft: '20px', marginBottom: '15px', color: '#eaeaea' }}>
+                    <li style={{ marginBottom: '8px' }}>Open your main layout file (e.g., <code>App.jsx</code>, <code>layout.tsx</code>, or <code>index.html</code>).</li>
+                    <li style={{ marginBottom: '8px' }}>If placing in <code>index.html</code>, paste the snippet just before <code>&lt;/body&gt;</code>.</li>
+                    <li style={{ marginBottom: '8px' }}>If loading dynamically inside a React component, use a <code>useEffect</code> hook to append the script tag to the document body.</li>
+                  </ol>
+                  <div className="code-box" style={{ background: '#111827', color: '#e5e7eb', padding: '16px', borderRadius: '8px', fontSize: '13px', whiteSpace: 'pre', overflowX: 'auto' }}>
+                    {`import { useEffect } from 'react';\n\nexport default function ChatWidget() {\n  useEffect(() => {\n    const script = document.createElement('script');\n    script.src = "${API_URL}/sitebrain-widget.js";\n    script.dataset.widgetId = "${activeProjectId}";\n    script.dataset.botName = "${botName}";\n    script.dataset.primaryColor = "${primaryColor}";\n    script.dataset.position = "${position}";\n    script.dataset.requireLead = "${requireLead}";\n    script.dataset.greetingMsg = "${greetingMsg}";\n    script.async = true;\n    document.body.appendChild(script);\n\n    return () => {\n      document.body.removeChild(script);\n    };\n  }, []);\n\n  return null;\n}`}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
         </div>
       </main>
     </div>
