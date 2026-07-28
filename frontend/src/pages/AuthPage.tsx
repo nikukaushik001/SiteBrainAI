@@ -12,24 +12,32 @@ export default function AuthPage() {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     
-    // Simulate auth network request
-    setTimeout(() => {
+    try {
+      const response = await fetch('http://127.0.0.1:8000/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      
+      const data = await response.json();
       setIsLoading(false);
       
-      // MOCK RBAC LOGIC:
-      // If email contains 'admin', they are the platform owner (sees all projects).
-      // Otherwise, they are a specific client (sees only their project).
-      const userRole = email.toLowerCase().includes('admin') ? 'admin' : 'client';
-      
-      localStorage.setItem('isAuthenticated', 'true');
-      localStorage.setItem('userRole', userRole);
-      
-      navigate('/dashboard');
-    }, 1000);
+      if (response.ok) {
+        localStorage.setItem('isAuthenticated', 'true');
+        localStorage.setItem('userRole', data.role);
+        localStorage.setItem('token', data.access_token);
+        navigate('/dashboard');
+      } else {
+        alert(data.detail || "Login failed");
+      }
+    } catch (err) {
+      setIsLoading(false);
+      alert("Error connecting to server.");
+    }
   };
 
   return (

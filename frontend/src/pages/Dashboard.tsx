@@ -36,19 +36,39 @@ export default function Dashboard() {
   const [copied, setCopied] = useState(false);
   const [userRole, setUserRole] = useState('client');
 
-  // Projects / Multi-Tenant State (Persisted in localStorage)
-  const initialProjects: Project[] = [
-    { id: 'default_workspace', name: 'My Workspace' }
-  ];
-
-  const [projects, setProjects] = useState<Project[]>(() => {
-    try {
-      const saved = localStorage.getItem('docsaura_projects');
-      return saved ? JSON.parse(saved) : initialProjects;
-    } catch {
-      return initialProjects;
-    }
-  });
+  const [projects, setProjects] = useState<Project[]>([]);
+  
+  // Fetch projects from backend
+  useEffect(() => {
+    const fetchProjects = async () => {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        navigate('/login');
+        return;
+      }
+      try {
+        const response = await fetch('http://127.0.0.1:8000/api/projects', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setProjects(data);
+          if (data.length > 0 && activeProjectId === 'default_workspace') {
+             setActiveProjectId(data[0].id);
+          }
+        } else {
+          if(response.status === 401) {
+              localStorage.removeItem('token');
+              localStorage.removeItem('isAuthenticated');
+              navigate('/login');
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch projects", err);
+      }
+    };
+    fetchProjects();
+  }, []);
 
   const [activeProjectId, setActiveProjectId] = useState<string>(() => {
     try {
@@ -171,6 +191,7 @@ export default function Dashboard() {
   const handleLogout = () => {
     localStorage.removeItem('isAuthenticated');
     localStorage.removeItem('userRole');
+    localStorage.removeItem('token');
     navigate('/');
   };
 

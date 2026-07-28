@@ -11,3 +11,8 @@ python-dotenv
 langchain-text-splitters
 langchain-community
 python-multipart
+sqlalchemy
+psycopg2
+python-jose[cryptography]
+passlib[bcrypt]
+bcrypt==4.0.1
