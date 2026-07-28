@@ -1,11 +1,11 @@
 import os
+import re
 import fitz
 from dotenv import load_dotenv
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_groq import ChatGroq
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough
+from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.output_parsers import StrOutputParser
 try:
     from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -38,52 +38,78 @@ llm = ChatGroq(
     temperature=0.0
 )
 
-def get_prompt_template(system_prompt: str = None) -> ChatPromptTemplate:
-    base_instructions = system_prompt if system_prompt else """You are a helpful and polite customer support assistant for a business."""
-    
-    template = f"""{base_instructions}
-Your goal is to answer the user's question based strictly on the provided context.
-
-Context: {{context}}
-
-Question: {{question}}
-
-Instructions:
-- If the answer is not contained within the context, politely say "I don't have that information. Please contact support."
-- Do not make up any information, prices, or policies.
-- Keep your answers concise and friendly.
-- Do not mention that you are reading from a context or document. Just answer the question directly.
-
-Answer:
-"""
-    return ChatPromptTemplate.from_template(template)
+def clean_context(text: str) -> str:
+    """Strip HTML tags and escape characters that break LangChain template parsing."""
+    # Remove HTML tags
+    text = re.sub(r'<[^>]+>', '', text)
+    # Remove badge markdown image links like [![text](url)](url)
+    text = re.sub(r'!?\[([^\]]*)\]\([^)]*\)', r'\1', text)
+    # Remove any remaining curly braces that could break template parsing
+    text = text.replace('{', '(').replace('}', ')')
+    return text.strip()
 
 def format_docs(docs):
-    return "\n\n".join(doc.page_content for doc in docs)
+    return "\n\n".join(clean_context(doc.page_content) for doc in docs)
+
+def build_messages(question: str, context: str, system_prompt: str = None) -> list:
+    """Build LLM messages directly — bypasses ChatPromptTemplate to avoid curly-brace f-string issues."""
+    base = system_prompt if system_prompt else "You are a helpful and polite customer support assistant for a business."
+    system_content = f"""{base}
+
+Your goal is to answer the user's question based strictly on the provided context.
+
+Context:
+{context}
+
+Instructions:
+- If the answer is not in the context, say: "I don't have that information. Please contact support."
+- Do not make up information, prices, or policies.
+- Keep answers concise and friendly.
+- Answer directly without mentioning that you are reading from a document.
+"""
+    return [
+        SystemMessage(content=system_content),
+        HumanMessage(content=question)
+    ]
 
 def ask_question(question: str, widget_id: str = "default", system_prompt: str = None) -> dict:
     """Invokes the RAG chain with retriever filtered by widget_id, returning the answer and source citations."""
     if not os.getenv("GROQ_API_KEY") or os.getenv("GROQ_API_KEY") == "your_groq_api_key_here":
         return {"answer": "System Error: GROQ_API_KEY is missing or invalid in the .env file.", "sources": []}
-        
+
     try:
-        # Dynamically create filtered retriever for the specific widget_id tenant
-        search_filter = {"widget_id": widget_id} if widget_id and widget_id != "all" else {}
-        tenant_retriever = vectorstore.as_retriever(search_kwargs={"k": 3, "filter": search_filter} if search_filter else {"k": 3})
-        
-        # Retrieve context documents first to extract sources
-        docs = tenant_retriever.invoke(question) if hasattr(tenant_retriever, 'invoke') else tenant_retriever.get_relevant_documents(question)
-        sources = list(set([doc.metadata.get("source") for doc in docs if doc.metadata and "source" in doc.metadata]))
+        docs = []
+
+        # ChromaDB requires {"field": {"$eq": value}} format for metadata filtering
+        if widget_id and widget_id != "all":
+            try:
+                chroma_filter = {"widget_id": {"$eq": widget_id}}
+                tenant_retriever = vectorstore.as_retriever(
+                    search_kwargs={"k": 5, "filter": chroma_filter}
+                )
+                docs = tenant_retriever.invoke(question)
+            except Exception:
+                # Fallback: fetch more unfiltered docs and manually filter by widget_id
+                try:
+                    fallback_retriever = vectorstore.as_retriever(search_kwargs={"k": 20})
+                    all_docs = fallback_retriever.invoke(question)
+                    docs = [d for d in all_docs if d.metadata.get("widget_id") == widget_id][:5]
+                except Exception:
+                    docs = []
+        else:
+            retriever_all = vectorstore.as_retriever(search_kwargs={"k": 5})
+            docs = retriever_all.invoke(question)
+
+        sources = list(set([
+            doc.metadata.get("source") for doc in docs
+            if doc.metadata and "source" in doc.metadata
+        ]))
         context_str = format_docs(docs)
 
-        dynamic_prompt = get_prompt_template(system_prompt)
-        
-        tenant_rag_chain = (
-            dynamic_prompt
-            | llm
-            | StrOutputParser()
-        )
-        answer = tenant_rag_chain.invoke({"context": context_str, "question": question})
+        # Use direct message construction — avoids template curly-brace parsing errors
+        messages = build_messages(question, context_str, system_prompt)
+        response = llm.invoke(messages)
+        answer = response.content if hasattr(response, 'content') else str(response)
         return {"answer": answer, "sources": sources}
     except Exception as e:
         return {"answer": f"Sorry, I encountered an error: {e}", "sources": []}
