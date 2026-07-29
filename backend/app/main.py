@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, status, Response
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, status, Response, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -8,15 +8,16 @@ import shutil
 import csv
 import io
 
+import requests
 from sqlalchemy.orm import Session
 from app.database import get_db, engine, Base
-from app.models import User, Tenant, QueryLog, Lead
+from app.models import User, Tenant, QueryLog, Lead, ChatSession, ChatMessage, AgentBooking
 from app.auth import (
     UserLogin, verify_password, get_password_hash,
     create_access_token, get_current_user,
     Token, TokenData, timedelta, ACCESS_TOKEN_EXPIRE_MINUTES
 )
-from app.ai_service import ask_question, embed_pdf, embed_url, crawl_sitemap, get_db_stats, reset_vectorstore, delete_document_source
+from app.ai_service import ask_question, embed_document, embed_url, crawl_sitemap, get_db_stats, reset_vectorstore, delete_document_source
 
 
 # Create database tables on startup
@@ -49,6 +50,7 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     question: str
     widget_id: Optional[str] = "default"
+    session_id: Optional[str] = None
     history: Optional[List[ChatMessage]] = []
 
 class ScrapeRequest(BaseModel):
@@ -67,6 +69,7 @@ class TenantUpdate(BaseModel):
     name: Optional[str] = None
     system_prompt: Optional[str] = None
     starter_prompts: Optional[str] = None
+    webhook_url: Optional[str] = None
 
 class LeadCreate(BaseModel):
     widget_id: Optional[str] = "default"
@@ -212,10 +215,10 @@ def get_projects(
     if current_user.role == "admin":
         tenants = db.query(Tenant).all()
         if tenants:
-            return [{"id": t.id, "name": t.name, "system_prompt": t.system_prompt, "starter_prompts": t.starter_prompts} for t in tenants]
+            return [{"id": t.id, "name": t.name, "system_prompt": t.system_prompt, "starter_prompts": t.starter_prompts, "webhook_url": t.webhook_url} for t in tenants]
         return [
-            {"id": "proj_main_biz", "name": "Main Business Workspace", "system_prompt": "", "starter_prompts": ""},
-            {"id": "proj_hireloop", "name": "HireLoop Ai", "system_prompt": "", "starter_prompts": ""},
+            {"id": "proj_main_biz", "name": "Main Business Workspace", "system_prompt": "", "starter_prompts": "", "webhook_url": ""},
+            {"id": "proj_hireloop", "name": "HireLoop Ai", "system_prompt": "", "starter_prompts": "", "webhook_url": ""},
         ]
     else:
         user = db.query(User).filter(User.email == current_user.email).first()
@@ -223,8 +226,8 @@ def get_projects(
             raise HTTPException(status_code=404, detail="User not found.")
         tenants = db.query(Tenant).filter(Tenant.user_id == user.id).all()
         if tenants:
-            return [{"id": t.id, "name": t.name, "system_prompt": t.system_prompt, "starter_prompts": t.starter_prompts} for t in tenants]
-        return [{"id": f"proj_{user.email.split('@')[0]}", "name": user.email.split('@')[0].capitalize(), "system_prompt": "", "starter_prompts": ""}]
+            return [{"id": t.id, "name": t.name, "system_prompt": t.system_prompt, "starter_prompts": t.starter_prompts, "webhook_url": t.webhook_url} for t in tenants]
+        return [{"id": f"proj_{user.email.split('@')[0]}", "name": user.email.split('@')[0].capitalize(), "system_prompt": "", "starter_prompts": "", "webhook_url": ""}]
 
 
 @app.post("/api/projects", tags=["Projects"])
@@ -247,7 +250,7 @@ def create_project(
     db.add(new_tenant)
     db.commit()
     db.refresh(new_tenant)
-    return {"id": new_tenant.id, "name": new_tenant.name, "system_prompt": new_tenant.system_prompt, "starter_prompts": new_tenant.starter_prompts}
+    return {"id": new_tenant.id, "name": new_tenant.name, "system_prompt": new_tenant.system_prompt, "starter_prompts": new_tenant.starter_prompts, "webhook_url": new_tenant.webhook_url}
 
 
 @app.put("/api/projects/{tenant_id}", tags=["Projects"])
@@ -273,10 +276,12 @@ def update_project(
         tenant.system_prompt = update_data.system_prompt
     if update_data.starter_prompts is not None:
         tenant.starter_prompts = update_data.starter_prompts
+    if update_data.webhook_url is not None:
+        tenant.webhook_url = update_data.webhook_url
         
     db.commit()
     db.refresh(tenant)
-    return {"id": tenant.id, "name": tenant.name, "system_prompt": tenant.system_prompt, "starter_prompts": tenant.starter_prompts}
+    return {"id": tenant.id, "name": tenant.name, "system_prompt": tenant.system_prompt, "starter_prompts": tenant.starter_prompts, "webhook_url": tenant.webhook_url}
 
 
 @app.delete("/api/projects/{tenant_id}", tags=["Projects"])
@@ -358,6 +363,31 @@ def analytics_endpoint(
     }
 
 
+@app.post("/analytics/generate-faq", tags=["Analytics"])
+def generate_faq(
+    widget_id: Optional[str] = "default",
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user)
+):
+    from app.ai_service import llm
+    from langchain.schema import SystemMessage, HumanMessage
+    
+    logs = db.query(QueryLog).filter(QueryLog.widget_id == widget_id, QueryLog.is_unanswered == False).order_by(QueryLog.timestamp.desc()).limit(100).all()
+    if not logs:
+        raise HTTPException(status_code=400, detail="No answered queries available to generate FAQ.")
+        
+    qa_text = "\n".join([f"Q: {log.question}\nA: {log.answer}" for log in logs])
+    
+    msg = [
+        SystemMessage(content="You are an expert documentation writer. Given a list of customer Q&As, group them logically and generate a clean, structured FAQ document in Markdown. Do not include introductory text, just the Markdown."),
+        HumanMessage(content=f"Generate FAQ for these Q&As:\n\n{qa_text}")
+    ]
+    
+    res = llm.invoke(msg)
+    faq_content = res.content if hasattr(res, 'content') else str(res)
+    return {"status": "success", "faq": faq_content}
+
+
 @app.post("/analytics/clear", tags=["Analytics"])
 def clear_analytics(
     widget_id: Optional[str] = "default",
@@ -406,8 +436,14 @@ def export_analytics_csv(
 
 # ── Leads (Capture & Management) ─────────────────────────────────────────────
 
+def send_webhook(url: str, payload: dict):
+    try:
+        requests.post(url, json=payload, timeout=5)
+    except Exception as e:
+        print(f"Webhook error: {e}")
+
 @app.post("/api/leads", tags=["Leads"])
-def capture_lead(lead_data: LeadCreate, db: Session = Depends(get_db)):
+def capture_lead(lead_data: LeadCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """Public endpoint to capture visitor lead info from widget."""
     if not lead_data.name or not lead_data.email:
         raise HTTPException(status_code=400, detail="Name and email are required.")
@@ -422,6 +458,18 @@ def capture_lead(lead_data: LeadCreate, db: Session = Depends(get_db)):
     db.add(new_lead)
     db.commit()
     db.refresh(new_lead)
+
+    tenant = db.query(Tenant).filter(Tenant.id == lead_data.widget_id).first()
+    if tenant and tenant.webhook_url:
+        payload = {
+            "name": new_lead.name,
+            "email": new_lead.email,
+            "phone": new_lead.phone,
+            "notes": new_lead.notes,
+            "widget_id": new_lead.widget_id
+        }
+        background_tasks.add_task(send_webhook, tenant.webhook_url, payload)
+
     return {"status": "success", "message": "Lead captured successfully.", "lead_id": new_lead.id}
 
 
@@ -447,6 +495,30 @@ def get_leads(
             "timestamp": l.timestamp.strftime("%Y-%m-%d %H:%M:%S") if l.timestamp else None
         }
         for l in leads
+    ]
+
+@app.get("/api/bookings", tags=["Leads"])
+def get_bookings(
+    widget_id: Optional[str] = "default",
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user)
+):
+    """Returns captured bookings for a widget ID."""
+    query = db.query(AgentBooking)
+    if widget_id and widget_id != "all":
+        query = query.filter(AgentBooking.widget_id == widget_id)
+    bookings = query.order_by(AgentBooking.timestamp.desc()).all()
+    return [
+        {
+            "id": b.id,
+            "widget_id": b.widget_id,
+            "customer_name": b.customer_name,
+            "customer_email": b.customer_email,
+            "booking_time": b.booking_time,
+            "notes": b.notes,
+            "timestamp": b.timestamp.strftime("%Y-%m-%d %H:%M:%S") if b.timestamp else None
+        }
+        for b in bookings
     ]
 
 
@@ -491,9 +563,22 @@ def chat_endpoint(request: ChatRequest, db: Session = Depends(get_db)):
     tenant = db.query(Tenant).filter(Tenant.id == widget_id).first()
     system_prompt = tenant.system_prompt if tenant else None
     
+    if request.session_id:
+        session = db.query(ChatSession).filter(ChatSession.id == request.session_id).first()
+        if not session:
+            session = ChatSession(id=request.session_id, widget_id=widget_id)
+            db.add(session)
+            db.commit()
+        db.add(ChatMessage(session_id=request.session_id, role="user", content=request.question.strip()))
+        db.commit()
+
     ai_result = ask_question(request.question, widget_id=widget_id, system_prompt=system_prompt)
     answer = ai_result.get("answer", "")
     sources = ai_result.get("sources", [])
+    
+    if request.session_id:
+        db.add(ChatMessage(session_id=request.session_id, role="assistant", content=answer.strip()))
+        db.commit()
 
     fallback_indicators = [
         "don't have that information",
@@ -517,6 +602,11 @@ def chat_endpoint(request: ChatRequest, db: Session = Depends(get_db)):
         print(f"Analytics Logging Error: {e}")
 
     return {"answer": answer, "sources": sources, "widget_id": widget_id, "is_unanswered": is_unanswered, "sentiment": ai_result.get("sentiment", "Neutral")}
+
+@app.get("/chat/history/{session_id}", tags=["Chat"])
+def get_chat_history(session_id: str, db: Session = Depends(get_db)):
+    messages = db.query(ChatMessage).filter(ChatMessage.session_id == session_id).order_by(ChatMessage.timestamp.asc()).all()
+    return [{"role": m.role, "content": m.content, "timestamp": m.timestamp.strftime("%Y-%m-%d %H:%M:%S") if m.timestamp else None} for m in messages]
 
 
 # ── Knowledge Base (protected) ────────────────────────────────────────────────
@@ -565,8 +655,12 @@ async def upload_document(
     widget_id: Optional[str] = "default",
     current_user: TokenData = Depends(get_current_user)
 ):
-    if not file.filename or not file.filename.endswith('.pdf'):
-        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Filename required.")
+        
+    ext = file.filename.split('.')[-1].lower()
+    if ext not in ['pdf', 'docx', 'txt', 'csv']:
+        raise HTTPException(status_code=400, detail="Only PDF, DOCX, TXT, and CSV files are supported.")
 
     temp_dir = os.path.join(BASE_DIR, "scripts", "temp_uploads")
     os.makedirs(temp_dir, exist_ok=True)
@@ -575,7 +669,7 @@ async def upload_document(
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    result = embed_pdf(file_path, widget_id=widget_id or "default")
+    result = embed_document(file_path, widget_id=widget_id or "default")
 
     if os.path.exists(file_path):
         os.remove(file_path)
