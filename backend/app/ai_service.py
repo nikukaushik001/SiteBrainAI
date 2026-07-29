@@ -12,6 +12,20 @@ try:
 except ImportError:
     from langchain.text_splitter import RecursiveCharacterTextSplitter
 
+from langchain_core.tools import tool
+from pydantic import BaseModel, Field
+import json
+from app.database import SessionLocal
+from app.models import AgentBooking
+
+
+import csv
+import docx
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin, urlparse
+import xml.etree.ElementTree as ET
+import requests
+
 
 # Load env variables
 load_dotenv()
@@ -72,6 +86,13 @@ Instructions:
         HumanMessage(content=question)
     ]
 
+class BookMeetingSchema(BaseModel):
+    """Schema for booking a meeting."""
+    name: str = Field(..., description="The name of the customer booking the meeting.")
+    email: str = Field(..., description="The email address of the customer.")
+    time: str = Field(..., description="The requested date and time for the meeting. (e.g. 'Tomorrow at 5 PM')")
+    notes: str = Field(..., description="Any additional notes or topics for the meeting.")
+
 def ask_question(question: str, widget_id: str = "default", system_prompt: str = None) -> dict:
     """Invokes the RAG chain with retriever filtered by widget_id, returning the answer and source citations."""
     if not os.getenv("GROQ_API_KEY") or os.getenv("GROQ_API_KEY") == "your_groq_api_key_here":
@@ -106,10 +127,38 @@ def ask_question(question: str, widget_id: str = "default", system_prompt: str =
         ]))
         context_str = format_docs(docs)
 
+        # Bind the tools
+        llm_with_tools = llm.bind_tools([BookMeetingSchema])
+        
         # Use direct message construction — avoids template curly-brace parsing errors
         messages = build_messages(question, context_str, system_prompt)
-        response = llm.invoke(messages)
-        answer = response.content if hasattr(response, 'content') else str(response)
+        response = llm_with_tools.invoke(messages)
+        
+        answer = ""
+        # Handle tool calls
+        if hasattr(response, 'tool_calls') and len(response.tool_calls) > 0:
+            for tc in response.tool_calls:
+                if tc['name'] == 'BookMeetingSchema':
+                    args = tc['args']
+                    # Save to DB
+                    try:
+                        db = SessionLocal()
+                        booking = AgentBooking(
+                            widget_id=widget_id,
+                            customer_name=args.get('name', 'Unknown'),
+                            customer_email=args.get('email', 'Unknown'),
+                            booking_time=args.get('time', 'Unknown'),
+                            notes=args.get('notes', '')
+                        )
+                        db.add(booking)
+                        db.commit()
+                        db.close()
+                        answer += f"✅ Great! I've booked your meeting for {args.get('time')} under {args.get('name')} ({args.get('email')}). Our team will be in touch!\n"
+                    except Exception as e:
+                        print("Error saving booking:", e)
+                        answer += "I tried to book your meeting but encountered an internal database error.\n"
+        else:
+            answer = response.content if hasattr(response, 'content') else str(response)
 
         # Quick Sentiment Analysis
         sentiment = "Neutral"
@@ -130,18 +179,34 @@ def ask_question(question: str, widget_id: str = "default", system_prompt: str =
     except Exception as e:
         return {"answer": f"Sorry, I encountered an error: {e}", "sources": [], "sentiment": "Neutral"}
 
-def embed_pdf(pdf_path: str, widget_id: str = "default") -> dict:
-    """Extracts text from a newly uploaded PDF, chunks it with widget_id metadata, and adds to ChromaDB."""
-    print(f"Extracting text from uploaded file: {pdf_path} (Widget ID: {widget_id})")
+def embed_document(file_path: str, widget_id: str = "default") -> dict:
+    """Extracts text from a newly uploaded document (PDF, DOCX, TXT, CSV), chunks it with widget_id metadata, and adds to ChromaDB."""
+    print(f"Extracting text from uploaded file: {file_path} (Widget ID: {widget_id})")
     text = ""
+    ext = file_path.split('.')[-1].lower()
+    
     try:
-        doc = fitz.open(pdf_path)
-        for page_num in range(len(doc)):
-            text += doc[page_num].get_text()
-        doc.close()
-        
+        if ext == 'pdf':
+            doc = fitz.open(file_path)
+            for page_num in range(len(doc)):
+                text += doc[page_num].get_text()
+            doc.close()
+        elif ext == 'docx':
+            doc = docx.Document(file_path)
+            text = "\n".join([paragraph.text for paragraph in doc.paragraphs])
+        elif ext == 'txt':
+            with open(file_path, 'r', encoding='utf-8') as f:
+                text = f.read()
+        elif ext == 'csv':
+            with open(file_path, 'r', encoding='utf-8') as f:
+                reader = csv.reader(f)
+                for row in reader:
+                    text += " ".join(row) + "\n"
+        else:
+            return {"success": False, "error": "Unsupported file format"}
+            
         if not text.strip():
-            return {"success": False, "error": "No text found in PDF"}
+            return {"success": False, "error": f"No text found in {ext.upper()}"}
             
         print("Chunking text...")
         text_splitter = RecursiveCharacterTextSplitter(
@@ -152,8 +217,8 @@ def embed_pdf(pdf_path: str, widget_id: str = "default") -> dict:
         chunks = text_splitter.split_text(text)
         
         print(f"Adding {len(chunks)} chunks to Chroma DB for tenant '{widget_id}'...")
-        filename = os.path.basename(pdf_path)
-        metadatas = [{"source": filename, "widget_id": widget_id, "type": "pdf"} for _ in chunks]
+        filename = os.path.basename(file_path)
+        metadatas = [{"source": filename, "widget_id": widget_id, "type": ext} for _ in chunks]
         vectorstore.add_texts(texts=chunks, metadatas=metadatas)
         
         return {"success": True, "chunks_added": len(chunks), "filename": filename, "widget_id": widget_id}
@@ -276,9 +341,6 @@ def reset_vectorstore(widget_id: str = "default") -> dict:
         return {"success": True, "message": f"Knowledge base for '{widget_id}' successfully reset."}
     except Exception as e:
         return {"success": False, "error": str(e)}
-
-import requests
-from bs4 import BeautifulSoup
 
 def crawl_sitemap(sitemap_url: str, widget_id: str = "default") -> dict:
     """Fetches a sitemap.xml, extracts up to 50 URLs, and embeds them."""
