@@ -98,7 +98,7 @@
     const micBtn = container.querySelector("#sb-mic");
     const input = container.querySelector("#sb-input");
     const messagesArea = container.querySelector("#sb-messages");
-    const loading = container.querySelector("#sb-loading");
+    let loading = container.querySelector("#sb-loading");
 
     const leadScreen = container.querySelector("#sb-lead-screen");
     const chatScreen = container.querySelector("#sb-chat-screen");
