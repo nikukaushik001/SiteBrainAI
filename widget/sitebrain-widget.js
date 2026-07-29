@@ -321,12 +321,13 @@
                 if (history && history.length > 0) {
                     // Remove default greeting
                     messagesArea.innerHTML = `<div class="sb-loading" id="sb-loading" style="display:none;">AI is thinking...</div>`;
+                    
+                    // Re-assign loading element BEFORE adding messages
+                    loading = container.querySelector("#sb-loading");
+
                     history.forEach(msg => {
                         addMessage(msg.content, msg.role === 'user' ? 'sb-user' : 'sb-ai');
                     });
-                    
-                    // Re-assign loading element
-                    loading = document.getElementById("sb-loading");
                 }
             }
         } catch (e) {
