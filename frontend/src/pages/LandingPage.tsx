@@ -48,6 +48,22 @@ export default function LandingPage() {
     };
   }, []);
 
+  // Helper to open widget safely
+  const openWidget = () => {
+    const tryClick = (retries = 0) => {
+      const widgetBtn = document.getElementById('sitebrain-chat-btn');
+      if (widgetBtn) {
+        widgetBtn.click();
+      } else if (retries < 10) {
+        // Retry every 200ms up to 2 seconds if widget is still loading
+        setTimeout(() => tryClick(retries + 1), 200);
+      } else {
+        alert("The AI demo is still loading. Please try again in a few seconds.");
+      }
+    };
+    tryClick();
+  };
+
   // Animated counter
   const AnimatedCounter = ({ end, suffix = '' }: { end: number; suffix?: string }) => {
     const [count, setCount] = useState(0);
@@ -89,10 +105,7 @@ export default function LandingPage() {
         </div>
         <div className="lp-nav-actions">
           <button className="lp-btn-ghost" onClick={() => navigate('/login')}>Log In</button>
-          <button className="lp-btn-primary" onClick={() => {
-            const widgetBtn = document.getElementById('sitebrain-chat-btn');
-            if (widgetBtn) widgetBtn.click();
-          }}>
+          <button className="lp-btn-primary" onClick={openWidget}>
             Try Live Demo
             <span className="lp-btn-glow"></span>
           </button>
@@ -118,10 +131,7 @@ export default function LandingPage() {
           </p>
 
           <div className="lp-hero-cta">
-            <button className="lp-btn-primary lp-btn-lg" onClick={() => {
-              const widgetBtn = document.getElementById('sitebrain-chat-btn');
-              if (widgetBtn) widgetBtn.click();
-            }}>
+            <button className="lp-btn-primary lp-btn-lg" onClick={openWidget}>
               <span className="lp-btn-icon">⚡</span>
               Try the AI Now — It's Live
               <span className="lp-btn-glow"></span>
@@ -258,10 +268,7 @@ export default function LandingPage() {
           <h2>Ready to hire your AI employee?</h2>
           <p>Stop losing customers to slow response times. Deploy an intelligent agent today.</p>
           <div className="lp-hero-cta">
-            <button className="lp-btn-primary lp-btn-lg" onClick={() => {
-              const widgetBtn = document.getElementById('sitebrain-chat-btn');
-              if (widgetBtn) widgetBtn.click();
-            }}>
+            <button className="lp-btn-primary lp-btn-lg" onClick={openWidget}>
               <span className="lp-btn-icon">💬</span>
               Talk to the AI Now
               <span className="lp-btn-glow"></span>
