@@ -11,9 +11,9 @@
     const starterChips = starterPromptsRaw ? starterPromptsRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
 
     // Backend endpoints
-    const API_URL = "http://127.0.0.1:8000/chat";
-    const LEAD_API_URL = "http://127.0.0.1:8000/api/leads";
-    const CSS_URL = "http://127.0.0.1:8000/static/sitebrain-widget.css";
+    const API_URL = "http://127.0.0.1:8001/chat";
+    const LEAD_API_URL = "http://127.0.0.1:8001/api/leads";
+    const CSS_URL = "http://127.0.0.1:8001/static/sitebrain-widget.css";
 
     // Check if lead was already captured for this session
     let leadSubmitted = !requireLead || (sessionStorage.getItem(`sb_lead_${widgetId}`) === "true");
