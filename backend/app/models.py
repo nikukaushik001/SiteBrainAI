@@ -17,6 +17,7 @@ class Tenant(Base):
     name = Column(String, nullable=False)
     system_prompt = Column(String, nullable=True) # Custom instructions for the LLM
     starter_prompts = Column(String, nullable=True) # Comma-separated starter chips
+    webhook_url = Column(String, nullable=True) # CRM Webhook URL
     user_id = Column(Integer, ForeignKey("users.id")) # Optional ownership
 
 class QueryLog(Base):
@@ -38,6 +39,30 @@ class Lead(Base):
     name = Column(String, nullable=False)
     email = Column(String, nullable=False)
     phone = Column(String, nullable=True)
+    notes = Column(String, nullable=True)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+
+class ChatSession(Base):
+    __tablename__ = "chat_sessions"
+    id = Column(String, primary_key=True, index=True) # UUID
+    widget_id = Column(String, index=True, nullable=False)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(String, ForeignKey("chat_sessions.id"), index=True)
+    role = Column(String, nullable=False) # "user" or "assistant"
+    content = Column(String, nullable=False)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+
+class AgentBooking(Base):
+    __tablename__ = "agent_bookings"
+    id = Column(Integer, primary_key=True, index=True)
+    widget_id = Column(String, index=True, nullable=False)
+    customer_name = Column(String, nullable=False)
+    customer_email = Column(String, nullable=False)
+    booking_time = Column(String, nullable=False) # "YYYY-MM-DD HH:MM"
     notes = Column(String, nullable=True)
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
 
