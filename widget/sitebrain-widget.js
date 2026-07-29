@@ -34,6 +34,11 @@
     document.head.appendChild(link);
 
     // 2. Create HTML Structure
+    const existingContainer = document.getElementById("sitebrain-widget-container");
+    if (existingContainer) {
+        existingContainer.remove();
+    }
+    
     const container = document.createElement("div");
     container.id = "sitebrain-widget-container";
     if (position === "bottom-left") {
@@ -86,21 +91,21 @@
     document.body.appendChild(container);
 
     // 3. Elements and Event Listeners
-    const chatBtn = document.getElementById("sitebrain-chat-btn");
-    const closeBtn = document.getElementById("sb-close");
-    const chatWindow = document.getElementById("sitebrain-chat-window");
-    const sendBtn = document.getElementById("sb-send");
-    const micBtn = document.getElementById("sb-mic");
-    const input = document.getElementById("sb-input");
-    const messagesArea = document.getElementById("sb-messages");
-    const loading = document.getElementById("sb-loading");
+    const chatBtn = container.querySelector("#sitebrain-chat-btn");
+    const closeBtn = container.querySelector("#sb-close");
+    const chatWindow = container.querySelector("#sitebrain-chat-window");
+    const sendBtn = container.querySelector("#sb-send");
+    const micBtn = container.querySelector("#sb-mic");
+    const input = container.querySelector("#sb-input");
+    const messagesArea = container.querySelector("#sb-messages");
+    const loading = container.querySelector("#sb-loading");
 
-    const leadScreen = document.getElementById("sb-lead-screen");
-    const chatScreen = document.getElementById("sb-chat-screen");
-    const leadSubmitBtn = document.getElementById("sb-lead-submit");
-    const leadNameInput = document.getElementById("sb-lead-name");
-    const leadEmailInput = document.getElementById("sb-lead-email");
-    const leadError = document.getElementById("sb-lead-error");
+    const leadScreen = container.querySelector("#sb-lead-screen");
+    const chatScreen = container.querySelector("#sb-chat-screen");
+    const leadSubmitBtn = container.querySelector("#sb-lead-submit");
+    const leadNameInput = container.querySelector("#sb-lead-name");
+    const leadEmailInput = container.querySelector("#sb-lead-email");
+    const leadError = container.querySelector("#sb-lead-error");
 
     // Toggle Chat Window
     chatBtn.addEventListener("click", () => {
@@ -232,7 +237,7 @@
 
     // Starter chip click: populate input and send
     if (starterChips.length > 0) {
-        const chipsContainer = document.getElementById("sb-chips");
+        const chipsContainer = container.querySelector("#sb-chips");
         if (chipsContainer) {
             chipsContainer.querySelectorAll(".sb-chip").forEach(chip => {
                 chip.addEventListener("click", () => {
@@ -310,7 +315,7 @@
     async function loadChatHistory() {
         if (!sessionId) return;
         try {
-            const res = await fetch(`http://127.0.0.1:8000/chat/history/${sessionId}`);
+            const res = await fetch(`http://127.0.0.1:8001/chat/history/${sessionId}`);
             if (res.ok) {
                 const history = await res.json();
                 if (history && history.length > 0) {

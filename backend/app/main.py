@@ -43,7 +43,7 @@ app.add_middleware(
 
 # ── Pydantic Schemas ──────────────────────────────────────────────────────────
 
-class ChatMessage(BaseModel):
+class ChatMessageInput(BaseModel):
     role: str  # "user" or "assistant"
     content: str
 
@@ -51,7 +51,7 @@ class ChatRequest(BaseModel):
     question: str
     widget_id: Optional[str] = "default"
     session_id: Optional[str] = None
-    history: Optional[List[ChatMessage]] = []
+    history: Optional[List[ChatMessageInput]] = []
 
 class ScrapeRequest(BaseModel):
     url: str
