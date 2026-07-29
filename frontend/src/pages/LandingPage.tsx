@@ -34,10 +34,10 @@ export default function LandingPage() {
       script.dataset.widgetId = 'default';
       script.dataset.botName = 'SiteBrain AI';
       script.dataset.color = '#6366f1';
-      script.dataset.greeting = "Hey! 👋 I'm a live AI agent. Ask me anything, use 🎙️ Voice, or say \"Book a demo\" to watch me schedule a meeting autonomously!";
+      script.dataset.greeting = "Hey! 👋 I'm SiteBrain AI — a live demo of what your business could have. Ask me anything about our product, try the 🎙️ mic button to talk to me, or say \"Book a demo\" to watch me schedule a meeting!";
       script.dataset.position = 'bottom-right';
       script.dataset.requireLead = 'false';
-      script.dataset.starterPrompts = "What can you do?, Book a demo, Tell me about Voice AI";
+      script.dataset.starterPrompts = "What is SiteBrain AI?, How does Voice AI work?, Book a demo for tomorrow";
       document.body.appendChild(script);
     }
     return () => {
