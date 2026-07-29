@@ -144,6 +144,7 @@ export default function Dashboard() {
     sentiment_breakdown: { Positive: 0, Neutral: 0, Negative: 0 }
   });
   const [leadsData, setLeadsData] = useState<Lead[]>([]);
+  const [bookingsData, setBookingsData] = useState<any[]>([]);
   const [isResetting, setIsResetting] = useState(false);
   const [deletingSource, setDeletingSource] = useState<string | null>(null);
 
@@ -155,7 +156,8 @@ export default function Dashboard() {
   const [requireLead, setRequireLead] = useState(false);
   const [systemPrompt, setSystemPrompt] = useState('');
   const [starterPrompts, setStarterPrompts] = useState('');
-  
+  const [webhookUrl, setWebhookUrl] = useState('');
+
   // Update customizer state when project changes
   useEffect(() => {
     const proj = projects.find(p => p.id === activeProjectId);
@@ -163,6 +165,8 @@ export default function Dashboard() {
     else setSystemPrompt('');
     if (proj && proj.starter_prompts) setStarterPrompts(proj.starter_prompts);
     else setStarterPrompts('');
+    if (proj && proj.webhook_url) setWebhookUrl(proj.webhook_url);
+    else setWebhookUrl('');
   }, [activeProjectId, projects]);
 
   const handleUpdateSystemPrompt = async () => {
@@ -180,6 +184,27 @@ export default function Dashboard() {
       } else {
         const data = await res.json();
         alert(data.detail || 'Failed to update system prompt');
+      }
+    } catch {
+      alert('Error connecting to backend API');
+    }
+  };
+
+  const handleSaveWebhook = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/projects/${activeProjectId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ webhook_url: webhookUrl })
+      });
+      if (handleAuthError(res)) return;
+      if (res.ok) {
+        const data = await res.json();
+        setProjects(prev => prev.map(p => p.id === data.id ? data : p));
+        alert('Webhook URL saved successfully!');
+      } else {
+        const data = await res.json();
+        alert(data.detail || 'Failed to update Webhook URL');
       }
     } catch {
       alert('Error connecting to backend API');
@@ -235,11 +260,46 @@ export default function Dashboard() {
     } catch { /* leads fetch failure non-critical */ }
   };
 
+  const fetchBookings = async (widgetId: string) => {
+    try {
+      const res = await fetch(`${API_URL}/api/bookings?widget_id=${widgetId}`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) setBookingsData(await res.json());
+    } catch { /* bookings fetch failure non-critical */ }
+  };
+
+  const [isGeneratingFaq, setIsGeneratingFaq] = useState(false);
+  const [faqResult, setFaqResult] = useState('');
+
   useEffect(() => {
     fetchStats(activeProjectId);
     fetchAnalytics(activeProjectId);
     fetchLeads(activeProjectId);
+    fetchBookings(activeProjectId);
   }, [activeProjectId, activeTab]);
+
+  const handleGenerateFAQ = async () => {
+    setIsGeneratingFaq(true);
+    setFaqResult('');
+    try {
+      const res = await fetch(`${API_URL}/analytics/generate-faq?widget_id=${activeProjectId}`, {
+        method: 'POST',
+        headers: getAuthHeaders()
+      });
+      if (handleAuthError(res)) return;
+      const data = await res.json();
+      if (res.ok) {
+        setFaqResult(data.faq);
+      } else {
+        alert(data.detail || 'Failed to generate FAQ.');
+      }
+    } catch {
+      alert('Error connecting to backend API');
+    } finally {
+      setIsGeneratingFaq(false);
+    }
+  };
 
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -729,7 +789,7 @@ export default function Dashboard() {
               <div className="header">
                 <div>
                   <h1>Knowledge Base</h1>
-                  <p>Upload PDFs or crawl website URLs for <strong>{currentProject.name}</strong>.</p>
+                  <p>Upload Documents (PDF, DOCX, TXT, CSV) or crawl website URLs for <strong>{currentProject.name}</strong>.</p>
                 </div>
                 <button className="btn-danger" onClick={handleResetBrain} disabled={isResetting}>
                   {isResetting ? 'Resetting...' : `🗑️ Reset Brain`}
@@ -738,12 +798,12 @@ export default function Dashboard() {
 
               {/* Ingestion Grid */}
               <div className="ingestion-grid">
-                {/* PDF Uploader */}
+                {/* Document Uploader */}
                 <div className="glass-panel section-panel">
                   <div className="section-title">
-                    <span>📄</span> PDF Document Upload
+                    <span>📄</span> Document Upload
                   </div>
-                  <p className="section-subtitle">Upload employee handbooks, pricing PDFs, menus, or FAQs.</p>
+                  <p className="section-subtitle">Upload employee handbooks, pricing PDFs, text files, or CSVs.</p>
 
                   <div
                     className="upload-dropzone"
@@ -755,15 +815,16 @@ export default function Dashboard() {
                     }}
                   >
                     <div className="upload-icon">📄</div>
-                    <h4 style={{ fontSize: '15px', marginBottom: '5px' }}>Drop PDF file here</h4>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Click or drag PDF · up to 50MB</p>
+                    <h4 style={{ fontSize: '15px', marginBottom: '5px' }}>Drop document here</h4>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Click or drag file (PDF, DOCX, TXT, CSV) · up to 50MB</p>
                     <input
                       type="file"
-                      accept="application/pdf"
+                      accept=".pdf,.docx,.txt,.csv"
                       ref={fileInputRef}
                       style={{ display: 'none' }}
                       onChange={(e) => handleFileUpload(e.target.files?.[0])}
                     />
+
                   </div>
 
                   {uploadStatus.status !== 'idle' && (
@@ -927,6 +988,9 @@ export default function Dashboard() {
                   <p>Track conversation performance, missing answers, &amp; visitor leads for <strong>{currentProject.name}</strong>.</p>
                 </div>
                 <div style={{ display: 'flex', gap: '10px' }}>
+                  <button className="btn-secondary" onClick={handleGenerateFAQ} disabled={isGeneratingFaq}>
+                    {isGeneratingFaq ? 'Generating...' : '🤖 Generate FAQ'}
+                  </button>
                   <button className="btn-secondary" onClick={handleExportCSV}>
                     📥 Export CSV
                   </button>
@@ -935,6 +999,18 @@ export default function Dashboard() {
                   </button>
                 </div>
               </div>
+
+              {faqResult && (
+                <div className="glass-panel section-panel" style={{ marginBottom: '20px' }}>
+                  <div className="section-title">
+                    <span>🤖</span> AI-Generated FAQ
+                    <button className="btn-secondary" onClick={() => setFaqResult('')} style={{ float: 'right', padding: '4px 10px', fontSize: '12px' }}>Close</button>
+                  </div>
+                  <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '14px', lineHeight: 1.6, background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: '8px' }}>
+                    {faqResult}
+                  </pre>
+                </div>
+              )}
 
               {/* Analytics Sub-Tab Navigation */}
               <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
@@ -951,6 +1027,13 @@ export default function Dashboard() {
                   onClick={() => setAnalyticsSubTab('leads')}
                 >
                   👥 Captured Leads ({leadsData.length})
+                </button>
+                <button
+                  className={`btn-secondary ${analyticsSubTab === 'bookings' ? 'active-tab-btn' : ''}`}
+                  style={{ background: analyticsSubTab === 'bookings' ? 'var(--accent-indigo)' : 'var(--bg-tertiary)', color: '#fff' }}
+                  onClick={() => setAnalyticsSubTab('bookings')}
+                >
+                  📅 Bookings ({bookingsData.length})
                 </button>
               </div>
 
@@ -1103,9 +1186,46 @@ export default function Dashboard() {
                   )}
                 </div>
               )}
+
+              {analyticsSubTab === 'bookings' && (
+                <div className="glass-panel section-panel">
+                  <div className="section-title">📅 AI Agent Bookings ({currentProject.name})</div>
+                  <p className="section-subtitle">Meetings and appointments autonomously booked by the AI Agent.</p>
+
+                  {bookingsData.length > 0 ? (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '12px', fontSize: '13px' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-muted)', textAlign: 'left' }}>
+                            <th style={{ padding: '10px' }}>Booked For</th>
+                            <th style={{ padding: '10px' }}>Customer Name</th>
+                            <th style={{ padding: '10px' }}>Email Address</th>
+                            <th style={{ padding: '10px' }}>Notes</th>
+                            <th style={{ padding: '10px' }}>Timestamp</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {bookingsData.map(booking => (
+                            <tr key={booking.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', color: '#fff' }}>
+                              <td style={{ padding: '10px', color: 'var(--accent-indigo)', fontWeight: 600 }}>{booking.booking_time}</td>
+                              <td style={{ padding: '10px', fontWeight: 600 }}>{booking.customer_name}</td>
+                              <td style={{ padding: '10px', color: 'var(--accent-cyan)' }}>{booking.customer_email}</td>
+                              <td style={{ padding: '10px', color: 'var(--text-secondary)' }}>{booking.notes}</td>
+                              <td style={{ padding: '10px', color: 'var(--text-muted)' }}>{booking.timestamp}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="empty-state">
+                      No bookings captured yet for <strong>{currentProject.name}</strong>. Tell your AI Assistant to "book a meeting" in the system prompt.
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
-
           {/* ═══════════════ WIDGET STUDIO TAB ═══════════════ */}
           {activeTab === 'widget' && (
             <div className="animate-fade-in">
@@ -1210,6 +1330,26 @@ export default function Dashboard() {
                     )}
                     <button className="btn-secondary" onClick={handleSaveStarterPrompts} disabled={isSavingStarterPrompts} style={{ width: '100%' }}>
                       {isSavingStarterPrompts ? 'Saving...' : '💾 Save Starter Chips'}
+                    </button>
+                  </div>
+
+                  <div className="glass-panel section-panel">
+                    <div className="section-title">🔗 CRM Webhook Integration
+                      <span style={{ marginLeft: '10px', fontSize: '11px', padding: '2px 8px', borderRadius: '20px', background: 'rgba(99,102,241,0.2)', color: 'var(--accent-indigo)', fontWeight: 700 }}>NEW</span>
+                    </div>
+                    <p className="section-subtitle">
+                      Automatically send captured leads to Zapier, Make, HubSpot, or any URL via HTTP POST.
+                    </p>
+                    <div className="form-group" style={{ marginBottom: '12px' }}>
+                      <input
+                        type="url"
+                        placeholder="https://hooks.zapier.com/..."
+                        value={webhookUrl}
+                        onChange={(e) => setWebhookUrl(e.target.value)}
+                      />
+                    </div>
+                    <button className="btn-secondary" onClick={handleSaveWebhook} style={{ width: '100%' }}>
+                      💾 Save Webhook URL
                     </button>
                   </div>
 
