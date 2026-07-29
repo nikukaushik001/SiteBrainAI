@@ -18,6 +18,15 @@
     // Check if lead was already captured for this session
     let leadSubmitted = !requireLead || (sessionStorage.getItem(`sb_lead_${widgetId}`) === "true");
 
+    // Persistent Chat Session ID
+    const sessionKey = `sb_session_${widgetId}`;
+    let sessionId = localStorage.getItem(sessionKey);
+    if (!sessionId) {
+        sessionId = 'sess_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+        localStorage.setItem(sessionKey, sessionId);
+    }
+
+
     // 1. Inject the CSS
     const link = document.createElement("link");
     link.rel = "stylesheet";
@@ -61,6 +70,7 @@
                     ${starterChips.map(chip => `<button class="sb-chip" style="border-color: ${primaryColor}; color: ${primaryColor};" data-prompt="${chip}">${chip}</button>`).join('')}
                 </div>` : ''}
                 <div class="sb-input-area">
+                    <button id="sb-mic" style="background: transparent; color: ${primaryColor}; border: 1px solid ${primaryColor}; padding: 0 12px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center;" title="Use Voice">🎙️</button>
                     <input type="text" id="sb-input" placeholder="Ask a question..." autocomplete="off" />
                     <button id="sb-send" style="background: ${primaryColor};">Send</button>
                 </div>
@@ -80,6 +90,7 @@
     const closeBtn = document.getElementById("sb-close");
     const chatWindow = document.getElementById("sitebrain-chat-window");
     const sendBtn = document.getElementById("sb-send");
+    const micBtn = document.getElementById("sb-mic");
     const input = document.getElementById("sb-input");
     const messagesArea = document.getElementById("sb-messages");
     const loading = document.getElementById("sb-loading");
@@ -159,7 +170,7 @@
             const response = await fetch(API_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ question: text, widget_id: widgetId })
+                body: JSON.stringify({ question: text, widget_id: widgetId, session_id: sessionId })
             });
 
             if (!response.ok) throw new Error("API Error");
@@ -169,6 +180,9 @@
             // Hide loading and add AI message with optional sources
             loading.style.display = "none";
             addMessage(data.answer, "sb-ai", data.sources);
+            
+            // Optional: Synthesize Speech
+            speakText(data.answer);
 
         } catch (error) {
             loading.style.display = "none";
@@ -230,5 +244,90 @@
             });
         }
     }
+
+    // --- Voice AI Logic ---
+    let isRecording = false;
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition = null;
+    
+    if (SpeechRecognition) {
+        recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        
+        recognition.onstart = () => {
+            isRecording = true;
+            micBtn.style.background = 'rgba(239, 68, 68, 0.2)'; // Light red
+            micBtn.innerText = '🔴';
+        };
+        
+        recognition.onresult = (event) => {
+            const transcript = event.results[0][0].transcript;
+            input.value = transcript;
+            sendMessage();
+        };
+        
+        recognition.onerror = (e) => {
+            console.error("Speech Recognition Error", e);
+            stopRecording();
+        };
+        
+        recognition.onend = () => {
+            stopRecording();
+        };
+    } else {
+        micBtn.style.display = 'none'; // Hide if browser doesn't support
+    }
+    
+    function stopRecording() {
+        isRecording = false;
+        micBtn.style.background = 'transparent';
+        micBtn.innerText = '🎙️';
+        if (recognition) recognition.stop();
+    }
+    
+    micBtn.addEventListener("click", () => {
+        if (!recognition) return alert("Your browser does not support Voice AI.");
+        if (isRecording) {
+            stopRecording();
+        } else {
+            recognition.start();
+        }
+    });
+
+    function speakText(text) {
+        if ('speechSynthesis' in window) {
+            // Very simple text cleanup for speech
+            const cleanText = text.replace(/[*#]/g, '').replace(/\[(.*?)\]\(.*?\)/g, '$1'); 
+            const utterance = new SpeechSynthesisUtterance(cleanText);
+            // Optionally select a nice voice here, skipping for simple implementation
+            window.speechSynthesis.speak(utterance);
+        }
+    }
+    // -----------------------
+
+    // Fetch chat history on load
+    async function loadChatHistory() {
+        if (!sessionId) return;
+        try {
+            const res = await fetch(`http://127.0.0.1:8000/chat/history/${sessionId}`);
+            if (res.ok) {
+                const history = await res.json();
+                if (history && history.length > 0) {
+                    // Remove default greeting
+                    messagesArea.innerHTML = `<div class="sb-loading" id="sb-loading" style="display:none;">AI is thinking...</div>`;
+                    history.forEach(msg => {
+                        addMessage(msg.content, msg.role === 'user' ? 'sb-user' : 'sb-ai');
+                    });
+                    
+                    // Re-assign loading element
+                    loading = document.getElementById("sb-loading");
+                }
+            }
+        } catch (e) {
+            console.error("Failed to load history", e);
+        }
+    }
+    loadChatHistory();
 
 })();
