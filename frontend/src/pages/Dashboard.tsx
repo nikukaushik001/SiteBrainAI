@@ -1305,11 +1305,11 @@ export default function Dashboard() {
                   </div>
 
                   <div className="glass-panel section-panel">
-                    <div className="section-title">💬 Starter Prompt Chips
+                    <div className="section-title">💬 Quick Suggestion Buttons
                       <span style={{ marginLeft: '10px', fontSize: '11px', padding: '2px 8px', borderRadius: '20px', background: 'rgba(99,102,241,0.2)', color: 'var(--accent-indigo)', fontWeight: 700 }}>NEW</span>
                     </div>
                     <p className="section-subtitle">
-                      Add quick-action chips that appear in your widget to guide visitors. Enter comma-separated prompts (e.g. <code>What's your pricing?, Book a demo, How does it work?</code>).
+                      These are clickable buttons that appear inside your chatbot to help visitors get started. They won't have to think about what to ask — just click! Separate each suggestion with a comma.
                     </p>
                     <div className="form-group" style={{ marginBottom: '12px' }}>
                       <input
@@ -1334,22 +1334,23 @@ export default function Dashboard() {
                   </div>
 
                   <div className="glass-panel section-panel">
-                    <div className="section-title">🔗 CRM Webhook Integration
+                    <div className="section-title">📤 Auto-Send New Leads to Your Tools
                       <span style={{ marginLeft: '10px', fontSize: '11px', padding: '2px 8px', borderRadius: '20px', background: 'rgba(99,102,241,0.2)', color: 'var(--accent-indigo)', fontWeight: 700 }}>NEW</span>
                     </div>
                     <p className="section-subtitle">
-                      Automatically send captured leads to Zapier, Make, HubSpot, or any URL via HTTP POST.
+                      Every time a visitor gives their name &amp; email in the chatbot, we can automatically send that info to your other tools — like <strong>Google Sheets</strong>, <strong>Mailchimp</strong>, <strong>HubSpot</strong>, or <strong>Slack</strong>. Just paste the automation link from <a href="https://zapier.com" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-cyan)' }}>Zapier</a> or <a href="https://make.com" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-cyan)' }}>Make.com</a> below.
                     </p>
                     <div className="form-group" style={{ marginBottom: '12px' }}>
+                      <label style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px', display: 'block' }}>Automation Link (from Zapier, Make, or similar)</label>
                       <input
                         type="url"
-                        placeholder="https://hooks.zapier.com/..."
+                        placeholder="Paste your automation URL here..."
                         value={webhookUrl}
                         onChange={(e) => setWebhookUrl(e.target.value)}
                       />
                     </div>
                     <button className="btn-secondary" onClick={handleSaveWebhook} style={{ width: '100%' }}>
-                      💾 Save Webhook URL
+                      💾 Save Automation Link
                     </button>
                   </div>
 
