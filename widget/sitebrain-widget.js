@@ -91,21 +91,21 @@
     document.body.appendChild(container);
 
     // 3. Elements and Event Listeners
-    const chatBtn = container.querySelector("#sitebrain-chat-btn");
-    const closeBtn = container.querySelector("#sb-close");
-    const chatWindow = container.querySelector("#sitebrain-chat-window");
-    const sendBtn = container.querySelector("#sb-send");
-    const micBtn = container.querySelector("#sb-mic");
-    const input = container.querySelector("#sb-input");
-    const messagesArea = container.querySelector("#sb-messages");
-    let loading = container.querySelector("#sb-loading");
+    const chatBtn = document.getElementById("sitebrain-chat-btn");
+    const closeBtn = document.getElementById("sb-close");
+    const chatWindow = document.getElementById("sitebrain-chat-window");
+    const sendBtn = document.getElementById("sb-send");
+    const micBtn = document.getElementById("sb-mic");
+    const input = document.getElementById("sb-input");
+    const messagesArea = document.getElementById("sb-messages");
+    let loading = document.getElementById("sb-loading");
 
-    const leadScreen = container.querySelector("#sb-lead-screen");
-    const chatScreen = container.querySelector("#sb-chat-screen");
-    const leadSubmitBtn = container.querySelector("#sb-lead-submit");
-    const leadNameInput = container.querySelector("#sb-lead-name");
-    const leadEmailInput = container.querySelector("#sb-lead-email");
-    const leadError = container.querySelector("#sb-lead-error");
+    const leadScreen = document.getElementById("sb-lead-screen");
+    const chatScreen = document.getElementById("sb-chat-screen");
+    const leadSubmitBtn = document.getElementById("sb-lead-submit");
+    const leadNameInput = document.getElementById("sb-lead-name");
+    const leadEmailInput = document.getElementById("sb-lead-email");
+    const leadError = document.getElementById("sb-lead-error");
 
     // Toggle Chat Window
     chatBtn.addEventListener("click", () => {
@@ -237,7 +237,7 @@
 
     // Starter chip click: populate input and send
     if (starterChips.length > 0) {
-        const chipsContainer = container.querySelector("#sb-chips");
+        const chipsContainer = document.getElementById("sb-chips");
         if (chipsContainer) {
             chipsContainer.querySelectorAll(".sb-chip").forEach(chip => {
                 chip.addEventListener("click", () => {
@@ -323,7 +323,7 @@
                     messagesArea.innerHTML = `<div class="sb-loading" id="sb-loading" style="display:none;">AI is thinking...</div>`;
                     
                     // Re-assign loading element BEFORE adding messages
-                    loading = container.querySelector("#sb-loading");
+                    loading = document.getElementById("sb-loading");
 
                     history.forEach(msg => {
                         addMessage(msg.content, msg.role === 'user' ? 'sb-user' : 'sb-ai');
