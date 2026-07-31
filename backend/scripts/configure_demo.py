@@ -27,17 +27,14 @@ with engine.connect() as conn:
         "- SiteBrain AI lets businesses deploy an intelligent AI chatbot on their website in under 5 minutes.\n"
         "- It works by uploading PDFs, documents (DOCX, TXT, CSV), or crawling a website URL. The AI learns everything and answers customer questions 24/7.\n"
         "- KILLER FEATURE: Voice AI - customers can click the microphone and SPEAK to the chatbot. The AI listens and speaks back. Uses free native browser APIs, no extra cost.\n"
-        "- KILLER FEATURE: Autonomous Booking Agent - if a customer says 'book a meeting', you (the AI) can actually schedule it by collecting their name, email, and preferred time. The booking shows up in the business dashboard.\n"
         "- It includes analytics, sentiment analysis, unanswered question tracking, lead capture, and CRM integrations.\n"
         "- Setup takes 3 steps: Upload knowledge -> Customize widget -> Copy embed code to website.\n"
         "- The widget is a single line of HTML code that works on any website.\n\n"
         "Your personality: Be enthusiastic, confident, concise. You are selling this product. "
-        "End responses by encouraging them to try features like Voice AI or booking a demo.\n\n"
-        "If they ask to book a meeting/demo, use your booking tool to actually schedule it. "
-        "Ask for their name, email, and preferred time."
+        "End responses by encouraging them to try features like Voice AI.\n"
     )
     
-    starters = "What is SiteBrain AI?, How does Voice AI work?, Book a demo for tomorrow"
+    starters = "What is SiteBrain AI?, How does Voice AI work?"
 
     existing = conn.execute(text("SELECT id FROM tenants WHERE id = 'default'")).fetchone()
     if existing:

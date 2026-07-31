@@ -295,3 +295,22 @@
     transform: translateY(-1px);
     box-shadow: 0 3px 10px rgba(0,0,0,0.2);
 }
+
+/* Viral Watermark */
+.sb-watermark {
+    text-align: center;
+    padding: 6px 0 8px;
+    background-color: #1f2937;
+    border-bottom-left-radius: 12px;
+    border-bottom-right-radius: 12px;
+}
+.sb-watermark a {
+    color: #9ca3af;
+    font-size: 10px;
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.2s;
+}
+.sb-watermark a:hover {
+    color: #d1d5db;
+}

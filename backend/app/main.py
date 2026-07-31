@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, status, Response, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, status, Response, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -70,6 +70,7 @@ class TenantUpdate(BaseModel):
     system_prompt: Optional[str] = None
     starter_prompts: Optional[str] = None
     webhook_url: Optional[str] = None
+    allowed_domains: Optional[str] = None
 
 class LeadCreate(BaseModel):
     widget_id: Optional[str] = "default"
@@ -215,10 +216,10 @@ def get_projects(
     if current_user.role == "admin":
         tenants = db.query(Tenant).all()
         if tenants:
-            return [{"id": t.id, "name": t.name, "system_prompt": t.system_prompt, "starter_prompts": t.starter_prompts, "webhook_url": t.webhook_url} for t in tenants]
+            return [{"id": t.id, "name": t.name, "system_prompt": t.system_prompt, "starter_prompts": t.starter_prompts, "webhook_url": t.webhook_url, "allowed_domains": t.allowed_domains} for t in tenants]
         return [
-            {"id": "proj_main_biz", "name": "Main Business Workspace", "system_prompt": "", "starter_prompts": "", "webhook_url": ""},
-            {"id": "proj_hireloop", "name": "HireLoop Ai", "system_prompt": "", "starter_prompts": "", "webhook_url": ""},
+            {"id": "proj_main_biz", "name": "Main Business Workspace", "system_prompt": "", "starter_prompts": "", "webhook_url": "", "allowed_domains": ""},
+            {"id": "proj_hireloop", "name": "HireLoop Ai", "system_prompt": "", "starter_prompts": "", "webhook_url": "", "allowed_domains": ""},
         ]
     else:
         user = db.query(User).filter(User.email == current_user.email).first()
@@ -226,8 +227,8 @@ def get_projects(
             raise HTTPException(status_code=404, detail="User not found.")
         tenants = db.query(Tenant).filter(Tenant.user_id == user.id).all()
         if tenants:
-            return [{"id": t.id, "name": t.name, "system_prompt": t.system_prompt, "starter_prompts": t.starter_prompts, "webhook_url": t.webhook_url} for t in tenants]
-        return [{"id": f"proj_{user.email.split('@')[0]}", "name": user.email.split('@')[0].capitalize(), "system_prompt": "", "starter_prompts": "", "webhook_url": ""}]
+            return [{"id": t.id, "name": t.name, "system_prompt": t.system_prompt, "starter_prompts": t.starter_prompts, "webhook_url": t.webhook_url, "allowed_domains": t.allowed_domains} for t in tenants]
+        return [{"id": f"proj_{user.email.split('@')[0]}", "name": user.email.split('@')[0].capitalize(), "system_prompt": "", "starter_prompts": "", "webhook_url": "", "allowed_domains": ""}]
 
 
 @app.post("/api/projects", tags=["Projects"])
@@ -250,7 +251,7 @@ def create_project(
     db.add(new_tenant)
     db.commit()
     db.refresh(new_tenant)
-    return {"id": new_tenant.id, "name": new_tenant.name, "system_prompt": new_tenant.system_prompt, "starter_prompts": new_tenant.starter_prompts, "webhook_url": new_tenant.webhook_url}
+    return {"id": new_tenant.id, "name": new_tenant.name, "system_prompt": new_tenant.system_prompt, "starter_prompts": new_tenant.starter_prompts, "webhook_url": new_tenant.webhook_url, "allowed_domains": new_tenant.allowed_domains}
 
 
 @app.put("/api/projects/{tenant_id}", tags=["Projects"])
@@ -278,10 +279,12 @@ def update_project(
         tenant.starter_prompts = update_data.starter_prompts
     if update_data.webhook_url is not None:
         tenant.webhook_url = update_data.webhook_url
+    if update_data.allowed_domains is not None:
+        tenant.allowed_domains = update_data.allowed_domains
         
     db.commit()
     db.refresh(tenant)
-    return {"id": tenant.id, "name": tenant.name, "system_prompt": tenant.system_prompt, "starter_prompts": tenant.starter_prompts, "webhook_url": tenant.webhook_url}
+    return {"id": tenant.id, "name": tenant.name, "system_prompt": tenant.system_prompt, "starter_prompts": tenant.starter_prompts, "webhook_url": tenant.webhook_url, "allowed_domains": tenant.allowed_domains}
 
 
 @app.delete("/api/projects/{tenant_id}", tags=["Projects"])
@@ -443,8 +446,17 @@ def send_webhook(url: str, payload: dict):
         print(f"Webhook error: {e}")
 
 @app.post("/api/leads", tags=["Leads"])
-def capture_lead(lead_data: LeadCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    """Public endpoint to capture visitor lead info from widget."""
+def capture_lead(lead_data: LeadCreate, req: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    """Public endpoint to capture leads from the widget. No auth required."""
+    widget_id = lead_data.widget_id or "default"
+    
+    tenant = db.query(Tenant).filter(Tenant.id == widget_id).first()
+    if tenant and tenant.allowed_domains:
+        origin = req.headers.get("origin") or req.headers.get("referer") or ""
+        allowed = [d.strip().lower() for d in tenant.allowed_domains.split(",") if d.strip()]
+        if origin and not any(a in origin.lower() for a in allowed) and "localhost" not in origin.lower() and "127.0.0.1" not in origin.lower():
+            raise HTTPException(status_code=403, detail="Unauthorized domain")
+
     if not lead_data.name or not lead_data.email:
         raise HTTPException(status_code=400, detail="Name and email are required.")
 
@@ -556,11 +568,20 @@ def reset_endpoint(
 # ── Chat (public — called by embedded widget) ─────────────────────────────────
 
 @app.post("/chat", tags=["Chat"])
-def chat_endpoint(request: ChatRequest, db: Session = Depends(get_db)):
+def chat_endpoint(request: ChatRequest, req: Request, db: Session = Depends(get_db)):
     """Public chat endpoint used by the embeddable widget. No auth required."""
     widget_id = request.widget_id or "default"
     
     tenant = db.query(Tenant).filter(Tenant.id == widget_id).first()
+    
+    # Enforce Domain Whitelisting
+    if tenant and tenant.allowed_domains:
+        origin = req.headers.get("origin") or req.headers.get("referer") or ""
+        allowed = [d.strip().lower() for d in tenant.allowed_domains.split(",") if d.strip()]
+        # Always allow localhost for dashboard preview
+        if origin and not any(a in origin.lower() for a in allowed) and "localhost" not in origin.lower() and "127.0.0.1" not in origin.lower():
+            raise HTTPException(status_code=403, detail="Unauthorized domain")
+            
     system_prompt = tenant.system_prompt if tenant else None
     
     if request.session_id:

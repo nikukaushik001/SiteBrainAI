@@ -14,6 +14,8 @@ interface Project {
   name: string;
   system_prompt?: string;
   starter_prompts?: string;
+  webhook_url?: string;
+  allowed_domains?: string;
 }
 
 interface AnalyticsLog {
@@ -157,6 +159,7 @@ export default function Dashboard() {
   const [systemPrompt, setSystemPrompt] = useState('');
   const [starterPrompts, setStarterPrompts] = useState('');
   const [webhookUrl, setWebhookUrl] = useState('');
+  const [allowedDomains, setAllowedDomains] = useState('');
 
   // Update customizer state when project changes
   useEffect(() => {
@@ -167,6 +170,8 @@ export default function Dashboard() {
     else setStarterPrompts('');
     if (proj && proj.webhook_url) setWebhookUrl(proj.webhook_url);
     else setWebhookUrl('');
+    if (proj && proj.allowed_domains) setAllowedDomains(proj.allowed_domains);
+    else setAllowedDomains('');
   }, [activeProjectId, projects]);
 
   const handleUpdateSystemPrompt = async () => {
@@ -184,6 +189,27 @@ export default function Dashboard() {
       } else {
         const data = await res.json();
         alert(data.detail || 'Failed to update system prompt');
+      }
+    } catch {
+      alert('Error connecting to backend API');
+    }
+  };
+
+  const handleSaveDomains = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/projects/${activeProjectId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ allowed_domains: allowedDomains })
+      });
+      if (handleAuthError(res)) return;
+      if (res.ok) {
+        const data = await res.json();
+        setProjects(prev => prev.map(p => p.id === data.id ? data : p));
+        alert('Allowed domains saved successfully!');
+      } else {
+        const data = await res.json();
+        alert(data.detail || 'Failed to update domains');
       }
     } catch {
       alert('Error connecting to backend API');
@@ -1440,6 +1466,24 @@ export default function Dashboard() {
                     </div>
                     <button className="btn-secondary" onClick={handleSaveWebhook} style={{ width: '100%' }}>
                       💾 Save Automation Link
+                    </button>
+                  </div>
+
+                  <div className="glass-panel section-panel">
+                    <div className="section-title">🔒 Domain Security (Whitelisting)</div>
+                    <p className="section-subtitle">
+                      Protect your widget! Enter the domains (URLs) where this widget is allowed to load. Anyone who copies your code and tries to use it on a different domain will be blocked. Separate multiple domains with commas.
+                    </p>
+                    <div className="form-group" style={{ marginBottom: '12px' }}>
+                      <input
+                        type="text"
+                        placeholder="e.g. https://mywebsite.com, https://shop.mywebsite.com"
+                        value={allowedDomains}
+                        onChange={(e) => setAllowedDomains(e.target.value)}
+                      />
+                    </div>
+                    <button className="btn-secondary" onClick={handleSaveDomains} style={{ width: '100%' }}>
+                      💾 Save Allowed Domains
                     </button>
                   </div>
 

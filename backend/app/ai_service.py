@@ -70,13 +70,14 @@ def build_messages(question: str, context: str, system_prompt: str = None) -> li
     base = system_prompt if system_prompt else "You are a helpful and polite customer support assistant for a business."
     system_content = f"""{base}
 
-Your goal is to answer the user's question based strictly on the provided context.
+Your goal is to answer the user's question based strictly on the provided context AND the information provided about who you are.
 
 Context:
 {context}
 
 Instructions:
-- If the answer is not in the context, say: "I don't have that information. Please contact support."
+- IMPORTANT: You must automatically detect the language of the user's question and reply in that EXACT same language (e.g., if they ask in Spanish, reply in Spanish).
+- If the answer is not in the context AND not in your system prompt instructions above, say: "I don't have that information. Please contact support." (Translate this phrase to their language if necessary).
 - Do not make up information, prices, or policies.
 - Keep answers concise and friendly.
 - Answer directly without mentioning that you are reading from a document.
@@ -86,12 +87,7 @@ Instructions:
         HumanMessage(content=question)
     ]
 
-class BookMeetingSchema(BaseModel):
-    """Schema for booking a meeting."""
-    name: str = Field(..., description="The name of the customer booking the meeting.")
-    email: str = Field(..., description="The email address of the customer.")
-    time: str = Field(..., description="The requested date and time for the meeting. (e.g. 'Tomorrow at 5 PM')")
-    notes: str = Field(..., description="Any additional notes or topics for the meeting.")
+
 
 def ask_question(question: str, widget_id: str = "default", system_prompt: str = None) -> dict:
     """Invokes the RAG chain with retriever filtered by widget_id, returning the answer and source citations."""
@@ -127,38 +123,11 @@ def ask_question(question: str, widget_id: str = "default", system_prompt: str =
         ]))
         context_str = format_docs(docs)
 
-        # Bind the tools
-        llm_with_tools = llm.bind_tools([BookMeetingSchema])
-        
         # Use direct message construction — avoids template curly-brace parsing errors
         messages = build_messages(question, context_str, system_prompt)
-        response = llm_with_tools.invoke(messages)
+        response = llm.invoke(messages)
         
-        answer = ""
-        # Handle tool calls
-        if hasattr(response, 'tool_calls') and len(response.tool_calls) > 0:
-            for tc in response.tool_calls:
-                if tc['name'] == 'BookMeetingSchema':
-                    args = tc['args']
-                    # Save to DB
-                    try:
-                        db = SessionLocal()
-                        booking = AgentBooking(
-                            widget_id=widget_id,
-                            customer_name=args.get('name', 'Unknown'),
-                            customer_email=args.get('email', 'Unknown'),
-                            booking_time=args.get('time', 'Unknown'),
-                            notes=args.get('notes', '')
-                        )
-                        db.add(booking)
-                        db.commit()
-                        db.close()
-                        answer += f"✅ Great! I've booked your meeting for {args.get('time')} under {args.get('name')} ({args.get('email')}). Our team will be in touch!\n"
-                    except Exception as e:
-                        print("Error saving booking:", e)
-                        answer += "I tried to book your meeting but encountered an internal database error.\n"
-        else:
-            answer = response.content if hasattr(response, 'content') else str(response)
+        answer = response.content if hasattr(response, 'content') else str(response)
 
         # Quick Sentiment Analysis
         sentiment = "Neutral"

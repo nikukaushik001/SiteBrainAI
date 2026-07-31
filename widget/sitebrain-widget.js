@@ -76,8 +76,14 @@
                 </div>` : ''}
                 <div class="sb-input-area">
                     <button id="sb-mic" style="background: transparent; color: ${primaryColor}; border: 1px solid ${primaryColor}; padding: 0 12px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center;" title="Use Voice">🎙️</button>
-                    <input type="text" id="sb-input" placeholder="Ask a question..." autocomplete="off" />
+                    <input type="text" id="sb-input" list="sb-suggestions" placeholder="Ask a question..." autocomplete="off" />
+                    <datalist id="sb-suggestions">
+                        ${starterChips.map(chip => `<option value="${chip}">`).join('')}
+                    </datalist>
                     <button id="sb-send" style="background: ${primaryColor};">Send</button>
+                </div>
+                <div class="sb-watermark">
+                    <a href="http://localhost:5173" target="_blank">⚡ Built with BrainDesk AI - Get one for your site</a>
                 </div>
             </div>
         </div>

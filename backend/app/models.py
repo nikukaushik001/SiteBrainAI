@@ -18,6 +18,7 @@ class Tenant(Base):
     system_prompt = Column(String, nullable=True) # Custom instructions for the LLM
     starter_prompts = Column(String, nullable=True) # Comma-separated starter chips
     webhook_url = Column(String, nullable=True) # CRM Webhook URL
+    allowed_domains = Column(String, nullable=True) # Comma-separated list of allowed origins
     user_id = Column(Integer, ForeignKey("users.id")) # Optional ownership
 
 class QueryLog(Base):
