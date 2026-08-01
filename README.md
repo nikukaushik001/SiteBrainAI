@@ -144,3 +144,21 @@ Part of an advanced AI SaaS portfolio build. Contributions and feature requests 
 
 Distributed under the MIT License.
 
+
+## 🚀 Production Deployment (Docker)
+
+SiteBrain AI is fully containerized and ready to be deployed to any VPS (like Oracle Cloud, AWS EC2, or DigitalOcean) using Docker.
+
+### How to Deploy:
+1. Clone this repository onto your server.
+2. Create a `.env` file in the root directory and add your `GROQ_API_KEY`:
+   ```bash
+   GROQ_API_KEY=your_key_here
+   ```
+3. Run the automated deployment script:
+   ```bash
+   chmod +x deploy.sh
+   ./deploy.sh
+   ```
+
+Docker Compose will automatically build the Frontend (React + Nginx) and Backend (FastAPI + ChromaDB) containers, network them together, and expose the application on Port 80. The application will automatically restart if the server reboots!
