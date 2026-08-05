@@ -95,47 +95,10 @@ npm run dev
 ## 📌 How to Embed Chat Widget into Any Website (100% Working Guide)
 
 ### Option A: Standard HTML / PHP / WordPress / Webflow Websites
-Paste this single `<script>` snippet right before the closing `</body>` tag of your website:
-
-```html
-<!-- BrainDesk AI Chat Widget -->
-<script 
-  src="http://127.0.0.1:8000/static/sitebrain-widget.js" 
-  data-widget-id="your_project_id"
-  data-bot-name="BrainDesk Assistant" 
-  data-color="#6366f1" 
-  data-greeting="Hi there! How can I help you today?" 
-  data-position="bottom-right"
-  data-require-lead="true">
-</script>
-```
+Paste the single `<script>` snippet right before the closing `</body>` tag of your website
 
 ### Option B: React.js / Next.js Applications
-In your `index.html` (or Next.js `app/layout.tsx` / `pages/_document.tsx`), add the script tag using Next.js `Script` or standard tag:
-
-```tsx
-import Script from 'next/script';
-
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <html lang="en">
-      <body>
-        {children}
-        <Script 
-          src="http://127.0.0.1:8000/static/sitebrain-widget.js"
-          data-widget-id="your_project_id"
-          data-bot-name="BrainDesk Assistant"
-          data-color="#6366f1"
-          data-greeting="Hi there! How can I help you today?"
-          data-position="bottom-right"
-          data-require-lead="true"
-          strategy="afterInteractive"
-        />
-      </body>
-    </html>
-  );
-}
-```
+In your `index.html` (or Next.js `app/layout.tsx` / `pages/_document.tsx`), add the script tag using Next.js `Script` or standard tag
 
 ---
 
