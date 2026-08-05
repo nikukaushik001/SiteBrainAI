@@ -10,10 +10,13 @@
     const starterPromptsRaw = (currentScript && currentScript.dataset.starterPrompts) || "";
     const starterChips = starterPromptsRaw ? starterPromptsRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
 
-    // Backend endpoints
-    const API_URL = "http://127.0.0.1:8001/chat";
-    const LEAD_API_URL = "http://127.0.0.1:8001/api/leads";
-    const CSS_URL = "http://127.0.0.1:8001/static/sitebrain-widget.css";
+    // Dynamic backend endpoints based on where the script was loaded from
+    const scriptSrc = currentScript ? currentScript.src : "http://127.0.0.1:8000/static/sitebrain-widget.js";
+    const baseUrl = new URL(scriptSrc).origin; // e.g. "http://127.0.0.1:8000"
+    
+    const API_URL = `${baseUrl}/chat`;
+    const LEAD_API_URL = `${baseUrl}/api/leads`;
+    const CSS_URL = `${baseUrl}/static/sitebrain-widget.css`;
 
     // Check if lead was already captured for this session
     let leadSubmitted = !requireLead || (sessionStorage.getItem(`sb_lead_${widgetId}`) === "true");

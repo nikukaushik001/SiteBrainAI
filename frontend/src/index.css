@@ -1,33 +1,33 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&display=swap');
 
 :root {
-  /* Rich Dark Color Palette */
-  --bg-dark: #07090e;
-  --bg-primary: #0d111a;
-  --bg-secondary: #131926;
-  --bg-tertiary: #1b2436;
-  --bg-card: rgba(19, 25, 38, 0.7);
-  --bg-glass: rgba(15, 21, 33, 0.65);
+  /* Rich Dark Color Palette - Neutral Gray/Black instead of blue-tinted */
+  --bg-dark: #0a0a0a;
+  --bg-primary: #121212;
+  --bg-secondary: #1a1a1a;
+  --bg-tertiary: #262626;
+  --bg-card: rgba(26, 26, 26, 0.7);
+  --bg-glass: rgba(18, 18, 18, 0.65);
   
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --text-primary: #f5f5f5;
+  --text-secondary: #a3a3a3;
+  --text-muted: #737373;
   
-  /* Vibrant Accent Gradients */
-  --accent-cyan: #06b6d4;
-  --accent-indigo: #6366f1;
-  --accent-purple: #8b5cf6;
-  --accent-pink: #ec4899;
+  /* Vibrant Accent Gradients - Warm Theme */
+  --accent-cyan: #f59e0b; /* Amber */
+  --accent-indigo: #ef4444; /* Red */
+  --accent-purple: #f43f5e; /* Rose */
+  --accent-pink: #f97316; /* Orange */
   --accent-emerald: #10b981;
   
-  --gradient-primary: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%);
-  --gradient-cyan: linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%);
+  --gradient-primary: linear-gradient(135deg, #ef4444 0%, #f43f5e 50%, #f97316 100%);
+  --gradient-cyan: linear-gradient(135deg, #f59e0b 0%, #f97316 100%);
   --gradient-emerald: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  --gradient-glow: radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, rgba(139, 92, 246, 0.05) 50%, transparent 100%);
+  --gradient-glow: radial-gradient(circle, rgba(239, 68, 68, 0.15) 0%, rgba(244, 63, 94, 0.05) 50%, transparent 100%);
   
   --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-active: rgba(99, 102, 241, 0.4);
-  --border-glow: rgba(139, 92, 246, 0.5);
+  --border-active: rgba(239, 68, 68, 0.4);
+  --border-glow: rgba(244, 63, 94, 0.5);
   
   --radius-xs: 6px;
   --radius-sm: 10px;

@@ -20,6 +20,12 @@ class Tenant(Base):
     webhook_url = Column(String, nullable=True) # CRM Webhook URL
     allowed_domains = Column(String, nullable=True) # Comma-separated list of allowed origins
     user_id = Column(Integer, ForeignKey("users.id")) # Optional ownership
+    
+    # Business Profile & AI Settings
+    phone_number = Column(String, nullable=True)
+    support_email = Column(String, nullable=True)
+    operating_hours = Column(String, nullable=True)
+    ai_persona = Column(String, nullable=True, default="Professional")
 
 class QueryLog(Base):
     __tablename__ = "query_logs"

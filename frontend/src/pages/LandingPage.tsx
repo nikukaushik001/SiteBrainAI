@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
 import Logo from '../components/Logo';
+import { API_URL } from '../config';
 import '../App.css';
 
 export default function LandingPage() {
@@ -30,10 +31,10 @@ export default function LandingPage() {
     if (!document.getElementById('braindesk-demo-widget')) {
       const script = document.createElement('script');
       script.id = 'braindesk-demo-widget';
-      script.src = `http://127.0.0.1:8001/static/sitebrain-widget.js?v=${Date.now()}`;
+      script.src = `${API_URL}/static/sitebrain-widget.js?v=${Date.now()}`;
       script.dataset.widgetId = 'default';
       script.dataset.botName = 'SiteBrain AI';
-      script.dataset.color = '#6366f1';
+      script.dataset.color = '#ef4444';
       script.dataset.greeting = "Hey! 👋 I'm SiteBrain AI — a live demo of what your business could have. Ask me anything about our product, or try the 🎙️ mic button to talk to me!";
       script.dataset.position = 'bottom-right';
       script.dataset.requireLead = 'false';

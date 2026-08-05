@@ -17,11 +17,24 @@ from app.auth import (
     create_access_token, get_current_user,
     Token, TokenData, timedelta, ACCESS_TOKEN_EXPIRE_MINUTES
 )
-from app.ai_service import ask_question, embed_document, embed_url, crawl_sitemap, get_db_stats, reset_vectorstore, delete_document_source
+from app.ai_service import ask_question, ask_question_stream, embed_document, embed_url, crawl_sitemap, get_db_stats, reset_vectorstore, delete_document_source
 
+
+from sqlalchemy import text
 
 # Create database tables on startup
 Base.metadata.create_all(bind=engine)
+
+def run_migrations():
+    with engine.begin() as conn:
+        # Add new columns if they don't exist
+        for col in ["phone_number", "support_email", "operating_hours", "ai_persona"]:
+            try:
+                conn.execute(text(f"ALTER TABLE tenants ADD COLUMN {col} VARCHAR;"))
+            except Exception:
+                pass # Column already exists
+
+run_migrations()
 
 app = FastAPI(title="BrainDesk Backend", version="1.0.0")
 
@@ -71,6 +84,10 @@ class TenantUpdate(BaseModel):
     starter_prompts: Optional[str] = None
     webhook_url: Optional[str] = None
     allowed_domains: Optional[str] = None
+    phone_number: Optional[str] = None
+    support_email: Optional[str] = None
+    operating_hours: Optional[str] = None
+    ai_persona: Optional[str] = None
 
 class LeadCreate(BaseModel):
     widget_id: Optional[str] = "default"
@@ -170,6 +187,40 @@ def register_user(
     )
 
 
+@app.post("/api/seed", tags=["Auth"])
+def seed_demo_users(db: Session = Depends(get_db)):
+    """Creates demo admin and client users if they don't already exist."""
+    created = []
+
+    admin = db.query(User).filter(User.email == "admin@braindesk.ai").first()
+    if not admin:
+        db.add(User(
+            email="admin@braindesk.ai",
+            hashed_password=get_password_hash("admin123"),
+            role="admin"
+        ))
+        created.append("admin@braindesk.ai")
+
+    client = db.query(User).filter(User.email == "client@hireloop.ai").first()
+    if not client:
+        db.add(User(
+            email="client@hireloop.ai",
+            hashed_password=get_password_hash("client123"),
+            role="client"
+        ))
+        created.append("client@hireloop.ai")
+
+    db.commit()
+    return {
+        "message": "Seed complete.",
+        "created": created,
+        "demo_credentials": [
+            {"email": "admin@braindesk.ai", "password": "admin123", "role": "admin"},
+            {"email": "client@hireloop.ai", "password": "client123", "role": "client"},
+        ]
+    }
+
+
 @app.post("/api/login", response_model=Token, tags=["Auth"])
 def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
     """Authenticate and return a JWT token."""
@@ -213,22 +264,22 @@ def get_projects(
     current_user: TokenData = Depends(get_current_user)
 ):
     """Return projects visible to the logged-in user."""
+    user = db.query(User).filter(User.email == current_user.email).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+
     if current_user.role == "admin":
         tenants = db.query(Tenant).all()
-        if tenants:
-            return [{"id": t.id, "name": t.name, "system_prompt": t.system_prompt, "starter_prompts": t.starter_prompts, "webhook_url": t.webhook_url, "allowed_domains": t.allowed_domains} for t in tenants]
-        return [
-            {"id": "proj_main_biz", "name": "Main Business Workspace", "system_prompt": "", "starter_prompts": "", "webhook_url": "", "allowed_domains": ""},
-            {"id": "proj_hireloop", "name": "HireLoop Ai", "system_prompt": "", "starter_prompts": "", "webhook_url": "", "allowed_domains": ""},
-        ]
     else:
-        user = db.query(User).filter(User.email == current_user.email).first()
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found.")
         tenants = db.query(Tenant).filter(Tenant.user_id == user.id).all()
-        if tenants:
-            return [{"id": t.id, "name": t.name, "system_prompt": t.system_prompt, "starter_prompts": t.starter_prompts, "webhook_url": t.webhook_url, "allowed_domains": t.allowed_domains} for t in tenants]
-        return [{"id": f"proj_{user.email.split('@')[0]}", "name": user.email.split('@')[0].capitalize(), "system_prompt": "", "starter_prompts": "", "webhook_url": "", "allowed_domains": ""}]
+        
+    return [{
+        "id": t.id, "name": t.name, "system_prompt": t.system_prompt, 
+        "starter_prompts": t.starter_prompts, "webhook_url": t.webhook_url, 
+        "allowed_domains": t.allowed_domains, "phone_number": t.phone_number,
+        "support_email": t.support_email, "operating_hours": t.operating_hours,
+        "ai_persona": t.ai_persona
+    } for t in tenants]
 
 
 @app.post("/api/projects", tags=["Projects"])
@@ -251,7 +302,49 @@ def create_project(
     db.add(new_tenant)
     db.commit()
     db.refresh(new_tenant)
-    return {"id": new_tenant.id, "name": new_tenant.name, "system_prompt": new_tenant.system_prompt, "starter_prompts": new_tenant.starter_prompts, "webhook_url": new_tenant.webhook_url, "allowed_domains": new_tenant.allowed_domains}
+    return {
+        "id": new_tenant.id, "name": new_tenant.name, "system_prompt": new_tenant.system_prompt, 
+        "starter_prompts": new_tenant.starter_prompts, "webhook_url": new_tenant.webhook_url, 
+        "allowed_domains": new_tenant.allowed_domains, "phone_number": new_tenant.phone_number,
+        "support_email": new_tenant.support_email, "operating_hours": new_tenant.operating_hours,
+        "ai_persona": new_tenant.ai_persona
+    }
+
+
+@app.get("/api/users", tags=["Users"])
+def get_users(
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user)
+):
+    """Admin only: List all users/clients."""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
+    users = db.query(User).all()
+    return [{"id": u.id, "email": u.email, "role": u.role} for u in users]
+
+
+@app.put("/api/projects/{project_id}/assign", tags=["Projects"])
+def assign_project(
+    project_id: str,
+    user_email: str,
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user)
+):
+    """Admin only: Assign a project to a client email."""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    target_user = db.query(User).filter(User.email == user_email).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    tenant = db.query(Tenant).filter(Tenant.id == project_id).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    tenant.user_id = target_user.id
+    db.commit()
+    return {"status": "success", "message": f"Assigned project {project_id} to {user_email}"}
 
 
 @app.put("/api/projects/{tenant_id}", tags=["Projects"])
@@ -281,10 +374,24 @@ def update_project(
         tenant.webhook_url = update_data.webhook_url
     if update_data.allowed_domains is not None:
         tenant.allowed_domains = update_data.allowed_domains
+    if update_data.phone_number is not None:
+        tenant.phone_number = update_data.phone_number
+    if update_data.support_email is not None:
+        tenant.support_email = update_data.support_email
+    if update_data.operating_hours is not None:
+        tenant.operating_hours = update_data.operating_hours
+    if update_data.ai_persona is not None:
+        tenant.ai_persona = update_data.ai_persona
         
     db.commit()
     db.refresh(tenant)
-    return {"id": tenant.id, "name": tenant.name, "system_prompt": tenant.system_prompt, "starter_prompts": tenant.starter_prompts, "webhook_url": tenant.webhook_url, "allowed_domains": tenant.allowed_domains}
+    return {
+        "id": tenant.id, "name": tenant.name, "system_prompt": tenant.system_prompt, 
+        "starter_prompts": tenant.starter_prompts, "webhook_url": tenant.webhook_url, 
+        "allowed_domains": tenant.allowed_domains, "phone_number": tenant.phone_number,
+        "support_email": tenant.support_email, "operating_hours": tenant.operating_hours,
+        "ai_persona": tenant.ai_persona
+    }
 
 
 @app.delete("/api/projects/{tenant_id}", tags=["Projects"])
@@ -390,6 +497,30 @@ def generate_faq(
     faq_content = res.content if hasattr(res, 'content') else str(res)
     return {"status": "success", "faq": faq_content}
 
+@app.get("/api/analytics", tags=["Analytics"])
+def get_analytics(
+    widget_id: Optional[str] = "default",
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user)
+):
+    """Return dashboard analytics. Enforces client ownership."""
+    user = db.query(User).filter(User.email == current_user.email).first()
+    
+    # Enforce RBAC
+    if current_user.role == "client" and widget_id != "all":
+        tenant = db.query(Tenant).filter(Tenant.id == widget_id).first()
+        if not tenant or tenant.user_id != user.id:
+            raise HTTPException(status_code=403, detail="Forbidden: You do not own this project.")
+    elif current_user.role == "client" and widget_id == "all":
+        # If client requests 'all', force it to their first project
+        tenant = db.query(Tenant).filter(Tenant.user_id == user.id).first()
+        if tenant:
+            widget_id = tenant.id
+        else:
+            return {"total_queries": 0, "total_answered": 0, "total_unanswered": 0, "resolution_rate_pct": 0, "top_unanswered": [], "recent_logs": []}
+
+    return get_analytics_data(widget_id, db)
+
 
 @app.post("/analytics/clear", tags=["Analytics"])
 def clear_analytics(
@@ -491,10 +622,22 @@ def get_leads(
     db: Session = Depends(get_db),
     current_user: TokenData = Depends(get_current_user)
 ):
-    """Returns captured leads for a widget ID."""
+    """Fetch captured leads for a specific widget."""
+    user = db.query(User).filter(User.email == current_user.email).first()
+
+    if current_user.role == "client":
+        if widget_id == "all":
+            tenant = db.query(Tenant).filter(Tenant.user_id == user.id).first()
+            widget_id = tenant.id if tenant else "none"
+        else:
+            tenant = db.query(Tenant).filter(Tenant.id == widget_id).first()
+            if not tenant or tenant.user_id != user.id:
+                raise HTTPException(status_code=403, detail="Forbidden: You do not own this project.")
+
     query = db.query(Lead)
     if widget_id and widget_id != "all":
         query = query.filter(Lead.widget_id == widget_id)
+        
     leads = query.order_by(Lead.timestamp.desc()).all()
     return [
         {
@@ -582,7 +725,17 @@ def chat_endpoint(request: ChatRequest, req: Request, db: Session = Depends(get_
         if origin and not any(a in origin.lower() for a in allowed) and "localhost" not in origin.lower() and "127.0.0.1" not in origin.lower():
             raise HTTPException(status_code=403, detail="Unauthorized domain")
             
-    system_prompt = tenant.system_prompt if tenant else None
+    if tenant:
+        base_prompt = tenant.system_prompt or "You are a helpful and polite customer support assistant."
+        persona = tenant.ai_persona or "Professional"
+        business_details = f"Business Name: {tenant.name}\n"
+        if tenant.phone_number: business_details += f"Phone: {tenant.phone_number}\n"
+        if tenant.support_email: business_details += f"Email: {tenant.support_email}\n"
+        if tenant.operating_hours: business_details += f"Hours: {tenant.operating_hours}\n"
+        
+        system_prompt = f"{base_prompt}\n\n[BUSINESS DETAILS]\n{business_details}\n[PERSONALITY/TONE]\nYou must adopt the following persona/tone: {persona}. Ensure all your responses strictly match this tone."
+    else:
+        system_prompt = None
     
     if request.session_id:
         session = db.query(ChatSession).filter(ChatSession.id == request.session_id).first()
@@ -630,7 +783,136 @@ def get_chat_history(session_id: str, db: Session = Depends(get_db)):
     return [{"role": m.role, "content": m.content, "timestamp": m.timestamp.strftime("%Y-%m-%d %H:%M:%S") if m.timestamp else None} for m in messages]
 
 
-# ── Knowledge Base (protected) ────────────────────────────────────────────────
+# ── Streaming Chat (SSE) ──────────────────────────────────────────────────────
+
+from fastapi.responses import StreamingResponse
+import json as json_module
+
+@app.post("/chat/stream", tags=["Chat"])
+def chat_stream_endpoint(request: ChatRequest, req: Request, db: Session = Depends(get_db)):
+    """SSE streaming chat endpoint — sends tokens in real-time for the dashboard playground."""
+    widget_id = request.widget_id or "default"
+
+    tenant = db.query(Tenant).filter(Tenant.id == widget_id).first()
+
+    # Enforce Domain Whitelisting
+    if tenant and tenant.allowed_domains:
+        origin = req.headers.get("origin") or req.headers.get("referer") or ""
+        allowed = [d.strip().lower() for d in tenant.allowed_domains.split(",") if d.strip()]
+        if origin and not any(a in origin.lower() for a in allowed) and "localhost" not in origin.lower() and "127.0.0.1" not in origin.lower():
+            raise HTTPException(status_code=403, detail="Unauthorized domain")
+
+    if tenant:
+        base_prompt = tenant.system_prompt or "You are a helpful and polite customer support assistant."
+        persona = tenant.ai_persona or "Professional"
+        business_details = f"Business Name: {tenant.name}\n"
+        if tenant.phone_number: business_details += f"Phone: {tenant.phone_number}\n"
+        if tenant.support_email: business_details += f"Email: {tenant.support_email}\n"
+        if tenant.operating_hours: business_details += f"Hours: {tenant.operating_hours}\n"
+        
+        system_prompt = f"{base_prompt}\n\n[BUSINESS DETAILS]\n{business_details}\n[PERSONALITY/TONE]\nYou must adopt the following persona/tone: {persona}. Ensure all your responses strictly match this tone."
+    else:
+        system_prompt = None
+
+    def event_generator():
+        full_answer = ""
+        sources = []
+        for event in ask_question_stream(request.question, widget_id=widget_id, system_prompt=system_prompt):
+            if event.get("done"):
+                sources = event.get("sources", [])
+                full_answer = event.get("full_answer", full_answer)
+                yield f"data: {json_module.dumps({'done': True, 'sources': sources})}\n\n"
+            elif event.get("token"):
+                full_answer += event["token"]
+                yield f"data: {json_module.dumps({'token': event['token']})}\n\n"
+
+        # Log to analytics after streaming completes
+        fallback_indicators = [
+            "don't have that information",
+            "dont have that information",
+            "not contained within the context",
+            "i don't know",
+            "i do not have"
+        ]
+        is_unanswered = any(indicator in full_answer.lower() for indicator in fallback_indicators)
+
+        try:
+            db_session = next(get_db())
+            db_session.add(QueryLog(
+                widget_id=widget_id,
+                question=request.question.strip(),
+                answer=full_answer.strip(),
+                is_unanswered=is_unanswered,
+                sentiment="Neutral"
+            ))
+            db_session.commit()
+            db_session.close()
+        except Exception as e:
+            print(f"Stream Analytics Logging Error: {e}")
+
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
+
+
+# ── Conversation History (protected) ──────────────────────────────────────────
+
+@app.get("/api/conversations", tags=["Chat"])
+def get_conversations(
+    widget_id: Optional[str] = "default",
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user)
+):
+    """Returns all chat sessions for a widget_id with message count and preview."""
+    user = db.query(User).filter(User.email == current_user.email).first()
+
+    if current_user.role == "client":
+        if widget_id == "all":
+            tenant = db.query(Tenant).filter(Tenant.user_id == user.id).first()
+            widget_id = tenant.id if tenant else "none"
+        else:
+            tenant = db.query(Tenant).filter(Tenant.id == widget_id).first()
+            if not tenant or tenant.user_id != user.id:
+                raise HTTPException(status_code=403, detail="Forbidden: You do not own this project.")
+
+    query = db.query(ChatSession)
+    if widget_id and widget_id != "all":
+        query = query.filter(ChatSession.widget_id == widget_id)
+
+    sessions = query.order_by(ChatSession.timestamp.desc()).all()
+
+    result = []
+    for session in sessions:
+        messages = db.query(ChatMessage).filter(
+            ChatMessage.session_id == session.id
+        ).order_by(ChatMessage.timestamp.asc()).all()
+
+        # Get the first user message as preview
+        preview = ""
+        for msg in messages:
+            if msg.role == "user":
+                preview = msg.content[:80] + ("..." if len(msg.content) > 80 else "")
+                break
+
+        result.append({
+            "id": session.id,
+            "widget_id": session.widget_id,
+            "timestamp": session.timestamp.strftime("%Y-%m-%d %H:%M:%S") if session.timestamp else None,
+            "message_count": len(messages),
+            "preview": preview
+        })
+
+    return result
+
+
 
 @app.post("/scrape", tags=["Knowledge Base"])
 def scrape_endpoint(

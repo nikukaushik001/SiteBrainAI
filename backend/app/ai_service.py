@@ -148,6 +148,56 @@ def ask_question(question: str, widget_id: str = "default", system_prompt: str =
     except Exception as e:
         return {"answer": f"Sorry, I encountered an error: {e}", "sources": [], "sentiment": "Neutral"}
 
+
+def ask_question_stream(question: str, widget_id: str = "default", system_prompt: str = None):
+    """Generator version of ask_question — yields tokens one at a time for SSE streaming."""
+    if not os.getenv("GROQ_API_KEY") or os.getenv("GROQ_API_KEY") == "your_groq_api_key_here":
+        yield {"token": "System Error: GROQ_API_KEY is missing or invalid in the .env file.", "done": True, "sources": []}
+        return
+
+    try:
+        docs = []
+        if widget_id and widget_id != "all":
+            try:
+                chroma_filter = {"widget_id": {"$eq": widget_id}}
+                tenant_retriever = vectorstore.as_retriever(
+                    search_kwargs={"k": 5, "filter": chroma_filter}
+                )
+                docs = tenant_retriever.invoke(question)
+            except Exception:
+                try:
+                    fallback_retriever = vectorstore.as_retriever(search_kwargs={"k": 20})
+                    all_docs = fallback_retriever.invoke(question)
+                    docs = [d for d in all_docs if d.metadata.get("widget_id") == widget_id][:5]
+                except Exception:
+                    docs = []
+        else:
+            retriever_all = vectorstore.as_retriever(search_kwargs={"k": 5})
+            docs = retriever_all.invoke(question)
+
+        sources = list(set([
+            doc.metadata.get("source") for doc in docs
+            if doc.metadata and "source" in doc.metadata
+        ]))
+        context_str = format_docs(docs)
+
+        messages = build_messages(question, context_str, system_prompt)
+
+        # Stream tokens from the LLM
+        full_answer = ""
+        for chunk in llm.stream(messages):
+            token = chunk.content if hasattr(chunk, 'content') else str(chunk)
+            if token:
+                full_answer += token
+                yield {"token": token}
+
+        # Yield final event with sources
+        yield {"done": True, "sources": sources, "full_answer": full_answer}
+
+    except Exception as e:
+        yield {"token": f"Sorry, I encountered an error: {e}", "done": True, "sources": []}
+
+
 def embed_document(file_path: str, widget_id: str = "default") -> dict:
     """Extracts text from a newly uploaded document (PDF, DOCX, TXT, CSV), chunks it with widget_id metadata, and adds to ChromaDB."""
     print(f"Extracting text from uploaded file: {file_path} (Widget ID: {widget_id})")

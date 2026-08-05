@@ -37,12 +37,12 @@ export default function Logo({ onClick, style, size = 'large' }: LogoProps) {
 
           <defs>
             <linearGradient id="paint0_linear" x1="15" y1="15" x2="50" y2="85" gradientUnits="userSpaceOnUse">
-              <stop stopColor="#6366f1" />
+              <stop stopColor="#ef4444" />
               <stop offset="1" stopColor="#a855f7" />
             </linearGradient>
             <linearGradient id="paint1_linear" x1="50" y1="15" x2="85" y2="85" gradientUnits="userSpaceOnUse">
               <stop stopColor="#0ea5e9" />
-              <stop offset="1" stopColor="#8b5cf6" />
+              <stop offset="1" stopColor="#f43f5e" />
             </linearGradient>
           </defs>
         </svg>
