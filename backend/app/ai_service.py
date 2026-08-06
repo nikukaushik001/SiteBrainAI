@@ -16,7 +16,7 @@ from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 import json
 from app.database import SessionLocal
-from app.models import AgentBooking
+from app.models import AgentBooking, Lead
 
 
 import csv
@@ -51,6 +51,19 @@ llm = ChatGroq(
     model_name="llama-3.3-70b-versatile",
     temperature=0.0
 )
+
+@tool
+def capture_lead(name: str, email: str, phone: str, widget_id: str) -> str:
+    """Captures a lead. Call this ONLY when you have collected Name, Email, and Phone from the customer."""
+    try:
+        db = SessionLocal()
+        new_lead = Lead(widget_id=widget_id, name=name, email=email, phone=phone)
+        db.add(new_lead)
+        db.commit()
+        db.close()
+        return "Lead captured successfully! Tell the customer we will contact them soon."
+    except Exception as e:
+        return f"Failed to capture lead: {str(e)}"
 
 def clean_context(text: str) -> str:
     """Strip HTML tags and escape characters that break LangChain template parsing."""
@@ -125,8 +138,20 @@ def ask_question(question: str, widget_id: str = "default", system_prompt: str =
 
         # Use direct message construction — avoids template curly-brace parsing errors
         messages = build_messages(question, context_str, system_prompt)
-        response = llm.invoke(messages)
+        llm_with_tools = llm.bind_tools([capture_lead])
+        response = llm_with_tools.invoke(messages)
         
+        if response.tool_calls:
+            for tc in response.tool_calls:
+                if tc["name"] == "capture_lead":
+                    args = tc["args"]
+                    args["widget_id"] = widget_id
+                    tool_msg = capture_lead.invoke(args)
+                    messages.append(response)
+                    from langchain_core.messages import ToolMessage
+                    messages.append(ToolMessage(content=tool_msg, tool_call_id=tc["id"]))
+            response = llm_with_tools.invoke(messages)
+
         answer = response.content if hasattr(response, 'content') else str(response)
 
         # Quick Sentiment Analysis
@@ -182,14 +207,55 @@ def ask_question_stream(question: str, widget_id: str = "default", system_prompt
         context_str = format_docs(docs)
 
         messages = build_messages(question, context_str, system_prompt)
+        llm_with_tools = llm.bind_tools([capture_lead])
 
-        # Stream tokens from the LLM
+        # We will iterate the stream. If the first chunk contains a tool call, 
+        # we abort streaming, invoke the tool, and yield the final answer.
+        # Otherwise, we stream normally.
+        
+        is_tool_call = False
         full_answer = ""
-        for chunk in llm.stream(messages):
-            token = chunk.content if hasattr(chunk, 'content') else str(chunk)
-            if token:
-                full_answer += token
-                yield {"token": token}
+        stream = llm_with_tools.stream(messages)
+        
+        # Read the first chunk to detect tool calls
+        try:
+            first_chunk = next(stream)
+            if hasattr(first_chunk, "tool_call_chunks") and first_chunk.tool_call_chunks:
+                is_tool_call = True
+            elif hasattr(first_chunk, "tool_calls") and first_chunk.tool_calls:
+                is_tool_call = True
+            else:
+                token = first_chunk.content if hasattr(first_chunk, 'content') else str(first_chunk)
+                if token:
+                    full_answer += token
+                    yield {"token": token}
+        except StopIteration:
+            pass
+
+        if is_tool_call:
+            # Re-invoke to get full tool call
+            response = llm_with_tools.invoke(messages)
+            if hasattr(response, "tool_calls") and response.tool_calls:
+                for tc in response.tool_calls:
+                    if tc["name"] == "capture_lead":
+                        args = tc["args"]
+                        args["widget_id"] = widget_id
+                        tool_msg = capture_lead.invoke(args)
+                        messages.append(response)
+                        from langchain_core.messages import ToolMessage
+                        messages.append(ToolMessage(content=tool_msg, tool_call_id=tc["id"]))
+                
+                final_res = llm_with_tools.invoke(messages)
+                ans = final_res.content if hasattr(final_res, 'content') else str(final_res)
+                yield {"token": ans, "done": True, "sources": sources, "full_answer": ans}
+                return
+        else:
+            # Continue streaming the rest
+            for chunk in stream:
+                token = chunk.content if hasattr(chunk, 'content') else str(chunk)
+                if token:
+                    full_answer += token
+                    yield {"token": token}
 
         # Yield final event with sources
         yield {"done": True, "sources": sources, "full_answer": full_answer}
