@@ -7,9 +7,17 @@ interface User {
   role: string;
 }
 
+interface AccessRequest {
+  id: number;
+  name: string;
+  email: string;
+  timestamp: string;
+}
+
 export default function ClientsTab() {
   const { API_URL, getAuthHeaders, showToast, projects } = useDashboard();
   const [users, setUsers] = useState<User[]>([]);
+  const [accessRequests, setAccessRequests] = useState<AccessRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // New Client Form
@@ -19,6 +27,7 @@ export default function ClientsTab() {
 
   useEffect(() => {
     fetchUsers();
+    fetchAccessRequests();
   }, []);
 
   const fetchUsers = async () => {
@@ -32,6 +41,35 @@ export default function ClientsTab() {
       console.error(e);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const fetchAccessRequests = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/request-access`, { headers: getAuthHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        setAccessRequests(data);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleDismissRequest = async (id: number) => {
+    try {
+      const res = await fetch(`${API_URL}/api/request-access/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        showToast('Request dismissed.', 'info');
+        setAccessRequests(prev => prev.filter(r => r.id !== id));
+      } else {
+        showToast('Failed to dismiss request.', 'error');
+      }
+    } catch (e) {
+      showToast('Network error.', 'error');
     }
   };
 
@@ -162,7 +200,79 @@ export default function ClientsTab() {
             </div>
           )}
         </div>
+      </div>
 
+      {/* Access Requests Table */}
+      <div style={{ marginTop: '24px' }}>
+        <h3 style={{ marginBottom: '16px', fontSize: '16px' }}>Pending Access Requests</h3>
+        <div className="table-container glass-panel">
+            <table className="data-table" style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                  <th style={{ padding: '12px 16px' }}>Date</th>
+                  <th style={{ padding: '12px 16px' }}>Name</th>
+                  <th style={{ padding: '12px 16px' }}>Email</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'right' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {accessRequests.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
+                      No pending access requests.
+                    </td>
+                  </tr>
+                ) : (
+                  accessRequests.map((req) => (
+                    <tr key={req.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <td style={{ padding: '12px 16px', color: 'var(--text-muted)' }}>{new Date(req.timestamp).toLocaleDateString()}</td>
+                      <td style={{ padding: '12px 16px', fontWeight: 500 }}>{req.name}</td>
+                      <td style={{ padding: '12px 16px' }}>{req.email}</td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                          <button 
+                            className="btn-primary" 
+                            style={{ padding: '6px 12px', fontSize: '12px' }}
+                            onClick={async () => {
+                              const pwd = prompt(`Enter a temporary password to create an account for ${req.email}:`);
+                              if (!pwd) return;
+                              
+                              try {
+                                const res = await fetch(`${API_URL}/api/register`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+                                  body: JSON.stringify({ email: req.email, password: pwd })
+                                });
+                                if (res.ok) {
+                                  showToast('Account created! Approving request...', 'success');
+                                  await fetchUsers();
+                                  await handleDismissRequest(req.id);
+                                } else {
+                                  const data = await res.json();
+                                  showToast(data.detail || 'Failed to create account.', 'error');
+                                }
+                              } catch (e) {
+                                showToast('Network error.', 'error');
+                              }
+                            }}
+                          >
+                            Approve & Create
+                          </button>
+                          <button 
+                            className="btn-secondary" 
+                            style={{ padding: '6px 12px', fontSize: '12px', color: '#fca5a5', borderColor: 'rgba(239,68,68,0.2)' }}
+                            onClick={() => handleDismissRequest(req.id)}
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+        </div>
       </div>
     </div>
   );
