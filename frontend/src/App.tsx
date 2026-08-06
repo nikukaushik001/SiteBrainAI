@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import LandingPage from './pages/LandingPage';
 import AuthPage from './pages/AuthPage';
+import ContactAdminPage from './pages/ContactAdminPage';
 import Dashboard from './pages/Dashboard';
 import './App.css';
 
@@ -40,6 +41,15 @@ function App() {
           element={
             <PublicOnlyRoute>
               <AuthPage />
+            </PublicOnlyRoute>
+          }
+        />
+
+        <Route
+          path="/contact-admin"
+          element={
+            <PublicOnlyRoute>
+              <ContactAdminPage />
             </PublicOnlyRoute>
           }
         />

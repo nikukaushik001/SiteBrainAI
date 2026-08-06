@@ -69,10 +69,6 @@ export default function AuthPage() {
           {isLogin
             ? 'Sign in to manage your AI agents.'
             : 'Start your 14-day free trial. No credit card required.'}
-          <br />
-          <span style={{ fontSize: '12px', color: 'var(--accent-cyan)', fontWeight: 600 }}>
-            Demo: use <strong>admin@braindesk.ai</strong> / <strong>admin123</strong>
-          </span>
         </p>
 
         {/* Error Alert */}
@@ -137,8 +133,8 @@ export default function AuthPage() {
           {isLogin ? (
             <p>
               Don't have an account?{' '}
-              <span onClick={() => { navigate('/signup'); setError(''); }} className="auth-link">
-                Sign up free
+              <span onClick={() => navigate('/contact-admin')} className="auth-link" style={{ cursor: 'pointer', color: 'var(--accent-orange)' }}>
+                Contact Admin
               </span>
             </p>
           ) : (
