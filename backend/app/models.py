@@ -73,3 +73,10 @@ class AgentBooking(Base):
     notes = Column(String, nullable=True)
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
 
+class AccessRequest(Base):
+    __tablename__ = "access_requests"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    email = Column(String, nullable=False)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+
