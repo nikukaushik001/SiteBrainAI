@@ -67,7 +67,7 @@ export interface DbStats {
   status: string;
 }
 
-export type TabType = 'overview' | 'playground' | 'documents' | 'analytics' | 'widget' | 'integration' | 'conversations' | 'clients' | 'profile' | 'billing';
+export type TabType = 'overview' | 'playground' | 'documents' | 'settings' | 'clients' | 'analytics' | 'conversations' | 'business-profile' | 'leads' | 'billing' | 'profile' | 'widget' | 'integration';
 
 // ── Context Shape ────────────────────────────────────────────────────────────
 

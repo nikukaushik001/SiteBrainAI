@@ -57,6 +57,7 @@ export default function Sidebar() {
   const navItems: { tab: TabType; icon: string; label: string; adminOnly?: boolean }[] = [
     { tab: 'overview',      icon: '📊', label: 'Overview' },
     { tab: 'playground',    icon: '💬', label: 'AI Playground' },
+    { tab: 'leads',         icon: '📬', label: 'Leads & Bookings' },
     { tab: 'documents',     icon: '📄', label: 'Knowledge Base', adminOnly: true },
     { tab: 'analytics',     icon: '📈', label: 'Analytics & Intelligence' },
     { tab: 'conversations', icon: '🗂️', label: 'Conversations' },

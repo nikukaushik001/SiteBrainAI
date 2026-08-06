@@ -11,6 +11,7 @@ import ConversationsTab from '../components/tabs/ConversationsTab';
 import ClientsTab from '../components/tabs/ClientsTab';
 import BusinessProfileTab from '../components/tabs/BusinessProfileTab';
 import BillingTab from '../components/tabs/BillingTab';
+import LeadsTab from '../components/tabs/LeadsTab';
 import '../App.css';
 
 /**
@@ -32,6 +33,7 @@ function DashboardContent() {
       case 'clients':       return <ClientsTab />;
       case 'profile':       return <BusinessProfileTab />;
       case 'billing':       return <BillingTab />;
+      case 'leads':         return <LeadsTab />;
       default:              return <OverviewTab />;
     }
   };
