@@ -11,7 +11,7 @@ import io
 import requests
 from sqlalchemy.orm import Session
 from app.database import get_db, engine, Base
-from app.models import User, Tenant, QueryLog, Lead, ChatSession, ChatMessage, AgentBooking
+from app.models import User, Tenant, QueryLog, Lead, ChatSession, ChatMessage, AgentBooking, AccessRequest
 from app.auth import (
     UserLogin, verify_password, get_password_hash,
     create_access_token, get_current_user,
@@ -99,6 +99,10 @@ class LeadCreate(BaseModel):
 class DocDeleteRequest(BaseModel):
     source: str
     widget_id: Optional[str] = "default"
+
+class AccessRequestCreate(BaseModel):
+    name: str
+    email: str
 
 
 # ── Auth & User Management ────────────────────────────────────────────────────
@@ -323,7 +327,86 @@ def get_users(
     return [{"id": u.id, "email": u.email, "role": u.role} for u in users]
 
 
-@app.put("/api/projects/{project_id}/assign", tags=["Projects"])
+@app.post("/api/request-access", tags=["Users"])
+def create_access_request(req: AccessRequestCreate, db: Session = Depends(get_db)):
+    """Public endpoint to submit an access request."""
+    new_req = AccessRequest(name=req.name, email=req.email)
+    db.add(new_req)
+    db.commit()
+    return {"message": "Request received"}
+
+@app.get("/api/request-access", tags=["Users"])
+def get_access_requests(
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user)
+):
+    """Admin only: list all pending access requests."""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
+    requests = db.query(AccessRequest).order_by(AccessRequest.timestamp.desc()).all()
+    return [{"id": r.id, "name": r.name, "email": r.email, "timestamp": r.timestamp} for r in requests]
+
+@app.delete("/api/request-access/{req_id}", tags=["Users"])
+def delete_access_request(
+    req_id: int,
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user)
+):
+    """Admin only: dismiss an access request."""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
+    req = db.query(AccessRequest).filter(AccessRequest.id == req_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+    db.delete(req)
+    db.commit()
+    return {"message": "Deleted successfully"}
+
+
+@app.get("/api/leads", tags=["Leads"])
+def get_leads(
+    widget_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user)
+):
+    """Admin or Tenant Owner: get captured leads."""
+    user = db.query(User).filter(User.email == current_user.email).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+        
+    query = db.query(Lead)
+    if current_user.role != "admin":
+        # Ensure they own the widget_id
+        owned_tenants = db.query(Tenant).filter(Tenant.user_id == user.id).all()
+        owned_ids = [t.id for t in owned_tenants]
+        query = query.filter(Lead.widget_id.in_(owned_ids))
+        
+    if widget_id:
+        query = query.filter(Lead.widget_id == widget_id)
+        
+    leads = query.order_by(Lead.timestamp.desc()).all()
+    return [{"id": l.id, "widget_id": l.widget_id, "name": l.name, "email": l.email, "phone": l.phone, "notes": l.notes, "timestamp": l.timestamp} for l in leads]
+
+@app.delete("/api/leads/{lead_id}", tags=["Leads"])
+def delete_lead(
+    lead_id: int,
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user)
+):
+    """Delete a captured lead."""
+    user = db.query(User).filter(User.email == current_user.email).first()
+    lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+        
+    if current_user.role != "admin":
+        tenant = db.query(Tenant).filter(Tenant.id == lead.widget_id).first()
+        if not tenant or tenant.user_id != user.id:
+            raise HTTPException(status_code=403, detail="Forbidden")
+            
+    db.delete(lead)
+    db.commit()
+    return {"message": "Lead deleted"}
 def assign_project(
     project_id: str,
     user_email: str,
@@ -733,7 +816,7 @@ def chat_endpoint(request: ChatRequest, req: Request, db: Session = Depends(get_
         if tenant.support_email: business_details += f"Email: {tenant.support_email}\n"
         if tenant.operating_hours: business_details += f"Hours: {tenant.operating_hours}\n"
         
-        system_prompt = f"{base_prompt}\n\n[BUSINESS DETAILS]\n{business_details}\n[PERSONALITY/TONE]\nYou must adopt the following persona/tone: {persona}. Ensure all your responses strictly match this tone."
+        system_prompt = f"{base_prompt}\n\n[BUSINESS DETAILS]\n{business_details}\n[PERSONALITY/TONE]\nYou must adopt the following persona/tone: {persona}. Ensure all your responses strictly match this tone.\n\n[LEAD CAPTURE]\nIf the user wants to book an appointment, schedule a service, or get a quote, you MUST ask for their Name, Email, and Phone. Once they provide it, you MUST use the `capture_lead` tool to save their details."
     else:
         system_prompt = None
     
@@ -810,7 +893,7 @@ def chat_stream_endpoint(request: ChatRequest, req: Request, db: Session = Depen
         if tenant.support_email: business_details += f"Email: {tenant.support_email}\n"
         if tenant.operating_hours: business_details += f"Hours: {tenant.operating_hours}\n"
         
-        system_prompt = f"{base_prompt}\n\n[BUSINESS DETAILS]\n{business_details}\n[PERSONALITY/TONE]\nYou must adopt the following persona/tone: {persona}. Ensure all your responses strictly match this tone."
+        system_prompt = f"{base_prompt}\n\n[BUSINESS DETAILS]\n{business_details}\n[PERSONALITY/TONE]\nYou must adopt the following persona/tone: {persona}. Ensure all your responses strictly match this tone.\n\n[LEAD CAPTURE]\nIf the user wants to book an appointment, schedule a service, or get a quote, you MUST ask for their Name, Email, and Phone. Once they provide it, you MUST use the `capture_lead` tool to save their details."
     else:
         system_prompt = None
 
