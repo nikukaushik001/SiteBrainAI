@@ -530,9 +530,20 @@ def analytics_endpoint(
     ]
 
     sentiment_counts = {"Positive": 0, "Neutral": 0, "Negative": 0}
+    volume_dict = {}
     for l in logs:
         s = getattr(l, "sentiment", "Neutral") or "Neutral"
         sentiment_counts[s] = sentiment_counts.get(s, 0) + 1
+        
+        if l.timestamp:
+            date_str = l.timestamp.strftime("%Y-%m-%d")
+            if date_str not in volume_dict:
+                volume_dict[date_str] = {"date": date_str, "queries": 0, "unanswered": 0}
+            volume_dict[date_str]["queries"] += 1
+            if l.is_unanswered:
+                volume_dict[date_str]["unanswered"] += 1
+
+    volume_by_day = sorted(list(volume_dict.values()), key=lambda x: x["date"])[-7:]
 
     return {
         "widget_id": widget_id,
@@ -542,6 +553,7 @@ def analytics_endpoint(
         "resolution_rate_pct": resolution_rate,
         "top_unanswered": top_unanswered,
         "sentiment_breakdown": sentiment_counts,
+        "volume_by_day": volume_by_day,
         "recent_logs": [
             {
                 "id": log.id,
@@ -602,7 +614,7 @@ def get_analytics(
         else:
             return {"total_queries": 0, "total_answered": 0, "total_unanswered": 0, "resolution_rate_pct": 0, "top_unanswered": [], "recent_logs": []}
 
-    return get_analytics_data(widget_id, db)
+    return analytics_endpoint(widget_id, db)
 
 
 @app.post("/analytics/clear", tags=["Analytics"])

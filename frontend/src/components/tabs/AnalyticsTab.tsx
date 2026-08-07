@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useDashboard } from '../../context/DashboardContext';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 
 export default function AnalyticsTab() {
   const {
@@ -53,6 +54,12 @@ export default function AnalyticsTab() {
     const token = localStorage.getItem('token') || '';
     window.open(`${API_URL}/analytics/export?widget_id=${activeProjectId}&token=${token}`, '_blank');
   };
+
+  const sentimentData = [
+    { name: 'Positive', value: analyticsData.sentiment_breakdown?.Positive ?? 0, color: '#10b981' },
+    { name: 'Neutral', value: analyticsData.sentiment_breakdown?.Neutral ?? 0, color: '#6366f1' },
+    { name: 'Negative', value: analyticsData.sentiment_breakdown?.Negative ?? 0, color: '#ef4444' }
+  ].filter(d => d.value > 0);
 
   return (
     <div className="animate-fade-in">
@@ -141,28 +148,70 @@ export default function AnalyticsTab() {
             </div>
           </div>
 
-          {/* Satisfaction Breakdown */}
-          <div className="glass-panel section-panel" style={{ marginBottom: '22px' }}>
-            <div className="section-title"><span>😊</span> Visitor Satisfaction Analysis
-              <span style={{ marginLeft: '10px', fontSize: '11px', padding: '2px 8px', borderRadius: '20px', background: 'rgba(99,102,241,0.2)', color: 'var(--accent-indigo)', fontWeight: 700 }}>NEW</span>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '22px' }}>
+            {/* Volume Over Time Chart */}
+            <div className="glass-panel section-panel">
+              <div className="section-title"><span>📈</span> Chat Volume (Last 7 Days)</div>
+              {analyticsData.volume_by_day && analyticsData.volume_by_day.length > 0 ? (
+                <div style={{ width: '100%', height: 250, marginTop: '20px' }}>
+                  <ResponsiveContainer>
+                    <AreaChart data={analyticsData.volume_by_day} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="colorQueries" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8}/>
+                          <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                        </linearGradient>
+                        <linearGradient id="colorUnanswered" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#ec4899" stopOpacity={0.8}/>
+                          <stop offset="95%" stopColor="#ec4899" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                      <XAxis dataKey="date" stroke="var(--text-muted)" fontSize={12} tickMargin={10} />
+                      <YAxis stroke="var(--text-muted)" fontSize={12} />
+                      <Tooltip contentStyle={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-subtle)', color: '#fff', borderRadius: '8px' }} />
+                      <Area type="monotone" dataKey="queries" name="Total Queries" stroke="#6366f1" fillOpacity={1} fill="url(#colorQueries)" />
+                      <Area type="monotone" dataKey="unanswered" name="Unanswered" stroke="#ec4899" fillOpacity={1} fill="url(#colorUnanswered)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="empty-state" style={{ height: '250px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  Not enough data for volume chart.
+                </div>
+              )}
             </div>
-            <p className="section-subtitle">AI-powered analysis of user emotions in their questions, helping you understand visitor satisfaction.</p>
-            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginTop: '12px' }}>
-              <div style={{ flex: 1, minWidth: '120px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '12px', padding: '16px', textAlign: 'center' }}>
-                <div style={{ fontSize: '28px', marginBottom: '4px' }}>😊</div>
-                <div style={{ fontSize: '26px', fontWeight: 800, color: 'var(--accent-emerald)' }}>{analyticsData.sentiment_breakdown?.Positive ?? 0}</div>
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>Positive</div>
-              </div>
-              <div style={{ flex: 1, minWidth: '120px', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.25)', borderRadius: '12px', padding: '16px', textAlign: 'center' }}>
-                <div style={{ fontSize: '28px', marginBottom: '4px' }}>😐</div>
-                <div style={{ fontSize: '26px', fontWeight: 800, color: 'var(--accent-indigo)' }}>{analyticsData.sentiment_breakdown?.Neutral ?? 0}</div>
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>Neutral</div>
-              </div>
-              <div style={{ flex: 1, minWidth: '120px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '12px', padding: '16px', textAlign: 'center' }}>
-                <div style={{ fontSize: '28px', marginBottom: '4px' }}>😟</div>
-                <div style={{ fontSize: '26px', fontWeight: 800, color: '#f87171' }}>{analyticsData.sentiment_breakdown?.Negative ?? 0}</div>
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>Negative</div>
-              </div>
+
+            {/* Satisfaction Breakdown Chart */}
+            <div className="glass-panel section-panel">
+              <div className="section-title"><span>😊</span> Visitor Satisfaction Analysis</div>
+              {sentimentData.length > 0 ? (
+                <div style={{ width: '100%', height: 250, marginTop: '20px', display: 'flex', alignItems: 'center' }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={sentimentData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={80}
+                        paddingAngle={5}
+                        dataKey="value"
+                      >
+                        {sentimentData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} stroke="rgba(0,0,0,0.2)" />
+                        ))}
+                      </Pie>
+                      <Tooltip contentStyle={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-subtle)', color: '#fff', borderRadius: '8px' }} itemStyle={{ color: '#fff' }} />
+                      <Legend verticalAlign="bottom" height={36} iconType="circle" />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="empty-state" style={{ height: '250px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  No sentiment data available.
+                </div>
+              )}
             </div>
           </div>
 

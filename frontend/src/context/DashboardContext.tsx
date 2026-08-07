@@ -40,6 +40,7 @@ export interface AnalyticsData {
   resolution_rate_pct: number;
   top_unanswered: { question: string; count: number }[];
   sentiment_breakdown?: { Positive: number; Neutral: number; Negative: number };
+  volume_by_day?: { date: string; queries: number; unanswered: number }[];
   recent_logs: AnalyticsLog[];
 }
 
