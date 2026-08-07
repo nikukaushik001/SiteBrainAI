@@ -36,6 +36,7 @@ The platform features **complete multi-tenant data isolation**. The AI strictly 
 - **Tenant Access Control**: "God Mode" platform admin dashboard vs. isolated client workspaces.
 - **Smart Web Crawler**: Instantly scrape and index any website (including Next.js/React SPAs).
 - **PDF Knowledge Base**: Upload employee handbooks, pricing guides, or FAQs.
+- **Conversational Lead Capture**: AI naturally collects Names, Emails, and Phone numbers and saves them to a dedicated dashboard.
 - **Unanswered Intelligence Analytics**: Automatically track and group questions the AI couldn't answer.
 - **Live AI Playground**: Test your business's AI responses safely inside the dashboard sandbox.
 - **Widget Customization Studio**: Brand your bot's color, title, and welcome greeting instantly.
