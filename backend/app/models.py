@@ -26,6 +26,12 @@ class Tenant(Base):
     support_email = Column(String, nullable=True)
     operating_hours = Column(String, nullable=True)
     ai_persona = Column(String, nullable=True, default="Professional")
+    
+    # Widget Styling
+    theme_color = Column(String, nullable=True)
+    font_family = Column(String, nullable=True)
+    bot_avatar_url = Column(String, nullable=True)
+    proactive_message = Column(String, nullable=True)
 
 class QueryLog(Base):
     __tablename__ = "query_logs"

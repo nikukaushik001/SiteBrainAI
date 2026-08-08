@@ -28,7 +28,7 @@ Base.metadata.create_all(bind=engine)
 def run_migrations():
     with engine.begin() as conn:
         # Add new columns if they don't exist
-        for col in ["phone_number", "support_email", "operating_hours", "ai_persona"]:
+        for col in ["phone_number", "support_email", "operating_hours", "ai_persona", "theme_color", "font_family", "bot_avatar_url", "proactive_message"]:
             try:
                 conn.execute(text(f"ALTER TABLE tenants ADD COLUMN {col} VARCHAR;"))
             except Exception:
@@ -88,6 +88,10 @@ class TenantUpdate(BaseModel):
     support_email: Optional[str] = None
     operating_hours: Optional[str] = None
     ai_persona: Optional[str] = None
+    theme_color: Optional[str] = None
+    font_family: Optional[str] = None
+    bot_avatar_url: Optional[str] = None
+    proactive_message: Optional[str] = None
 
 class LeadCreate(BaseModel):
     widget_id: Optional[str] = "default"
@@ -303,6 +307,11 @@ def create_project(
         name=tenant_data.name,
         user_id=user.id
     )
+    for field in [
+        "operating_hours", "ai_persona", "theme_color", "font_family", "bot_avatar_url", "proactive_message"
+    ]:
+        if hasattr(tenant_data, field) and getattr(tenant_data, field) is not None:
+            setattr(new_tenant, field, getattr(tenant_data, field))
     db.add(new_tenant)
     db.commit()
     db.refresh(new_tenant)
@@ -465,6 +474,14 @@ def update_project(
         tenant.operating_hours = update_data.operating_hours
     if update_data.ai_persona is not None:
         tenant.ai_persona = update_data.ai_persona
+    if update_data.theme_color is not None:
+        tenant.theme_color = update_data.theme_color
+    if update_data.font_family is not None:
+        tenant.font_family = update_data.font_family
+    if update_data.bot_avatar_url is not None:
+        tenant.bot_avatar_url = update_data.bot_avatar_url
+    if update_data.proactive_message is not None:
+        tenant.proactive_message = update_data.proactive_message
         
     db.commit()
     db.refresh(tenant)
@@ -473,7 +490,9 @@ def update_project(
         "starter_prompts": tenant.starter_prompts, "webhook_url": tenant.webhook_url, 
         "allowed_domains": tenant.allowed_domains, "phone_number": tenant.phone_number,
         "support_email": tenant.support_email, "operating_hours": tenant.operating_hours,
-        "ai_persona": tenant.ai_persona
+        "ai_persona": tenant.ai_persona, "theme_color": tenant.theme_color,
+        "font_family": tenant.font_family, "bot_avatar_url": tenant.bot_avatar_url,
+        "proactive_message": tenant.proactive_message
     }
 
 
