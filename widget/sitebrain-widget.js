@@ -9,6 +9,11 @@
     const requireLead = (currentScript && currentScript.dataset.requireLead === "true");
     const starterPromptsRaw = (currentScript && currentScript.dataset.starterPrompts) || "";
     const starterChips = starterPromptsRaw ? starterPromptsRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+    
+    // New styling variables
+    const fontFamily = (currentScript && currentScript.dataset.fontFamily) || "Inter, sans-serif";
+    const botAvatarUrl = (currentScript && currentScript.dataset.botAvatarUrl) || "";
+    const proactiveMessage = (currentScript && currentScript.dataset.proactiveMessage) || "";
 
     // Dynamic backend endpoints based on where the script was loaded from
     const scriptSrc = currentScript ? currentScript.src : "http://127.0.0.1:8000/static/sitebrain-widget.js";
@@ -50,9 +55,99 @@
     }
     
     container.innerHTML = `
+        <style>
+            #sitebrain-widget-container, #sitebrain-widget-container * {
+                font-family: ${fontFamily};
+            }
+            .sb-proactive-popup {
+                position: fixed;
+                ${position === 'bottom-left' ? 'left: 20px;' : 'right: 20px;'}
+                bottom: 85px;
+                background: #fff;
+                color: #111827;
+                padding: 12px 16px;
+                border-radius: 12px;
+                box-shadow: 0 10px 25px -5px rgba(0,0,0,0.2);
+                font-size: 14px;
+                z-index: 2147483646;
+                display: none;
+                animation: sb-fade-in 0.3s ease-out;
+                border: 1px solid rgba(0,0,0,0.05);
+                max-width: 250px;
+                cursor: pointer;
+            }
+            .sb-proactive-popup::after {
+                content: '';
+                position: absolute;
+                bottom: -6px;
+                ${position === 'bottom-left' ? 'left: 24px;' : 'right: 24px;'}
+                border-width: 6px 6px 0;
+                border-style: solid;
+                border-color: #fff transparent;
+                display: block;
+                width: 0;
+            }
+            .sb-proactive-close {
+                position: absolute;
+                top: -8px;
+                right: -8px;
+                background: #f3f4f6;
+                color: #6b7280;
+                border: none;
+                border-radius: 50%;
+                width: 20px;
+                height: 20px;
+                font-size: 12px;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+            .sb-proactive-close:hover {
+                background: #e5e7eb;
+                color: #111827;
+            }
+            .sb-avatar {
+                width: 28px;
+                height: 28px;
+                border-radius: 50%;
+                margin-right: 8px;
+                object-fit: cover;
+                background: #fff;
+            }
+            .sb-message.sb-ai {
+                display: flex;
+                align-items: flex-start;
+                gap: 8px;
+            }
+            .sb-message-bubble {
+                background: var(--sb-msg-bg, #f3f4f6);
+                padding: 10px 14px;
+                border-radius: 12px;
+                border-top-left-radius: var(--sb-msg-tl, 4px);
+                border-top-right-radius: var(--sb-msg-tr, 12px);
+                font-size: 14px;
+                color: #111827;
+            }
+        </style>
+        
+        ${proactiveMessage ? `
+        <div id="sb-proactive-popup" class="sb-proactive-popup">
+            <button class="sb-proactive-close" id="sb-proactive-close">&times;</button>
+            <div style="display: flex; align-items: center;">
+                ${botAvatarUrl ? `<img src="${botAvatarUrl}" class="sb-avatar" style="width: 32px; height: 32px;" />` : `<div style="font-size: 24px; margin-right: 12px;">👋</div>`}
+                <div style="line-height: 1.4;">${proactiveMessage}</div>
+            </div>
+        </div>
+        ` : ''}
+
         <div id="sitebrain-chat-window" class="${position === 'bottom-left' ? 'sb-pos-left' : ''}">
             <div class="sb-header" style="background: ${primaryColor};">
-                <h3>${botName}</h3>
+                <div style="display: flex; align-items: center;">
+                    ${botAvatarUrl ? `<img src="${botAvatarUrl}" class="sb-avatar" />` : ''}
+                    <h3 style="margin: 0;">${botName}</h3>
+                </div>
                 <button class="sb-close-btn" id="sb-close">&times;</button>
             </div>
 
@@ -70,7 +165,10 @@
             <!-- Main Chat View -->
             <div id="sb-chat-screen" style="display: ${leadSubmitted ? 'flex' : 'none'}; flex-direction: column; height: 100%;">
                 <div class="sb-messages" id="sb-messages">
-                    <div class="sb-message sb-ai">${greetingMsg}</div>
+                    <div class="sb-message sb-ai">
+                        ${botAvatarUrl ? `<img src="${botAvatarUrl}" class="sb-avatar" />` : ''}
+                        <div class="sb-message-bubble">${greetingMsg}</div>
+                    </div>
                     <div class="sb-loading" id="sb-loading">AI is thinking...</div>
                 </div>
                 ${starterChips.length > 0 ? `
@@ -117,7 +215,7 @@
     const leadError = document.getElementById("sb-lead-error");
 
     // Toggle Chat Window
-    chatBtn.addEventListener("click", () => {
+    const toggleChat = () => {
         chatWindow.classList.toggle("sb-active");
         if(chatWindow.classList.contains("sb-active")) {
             if (leadSubmitted) {
@@ -125,12 +223,39 @@
             } else {
                 leadNameInput.focus();
             }
+            if (proactivePopup) proactivePopup.style.display = 'none';
         }
-    });
+    };
+
+    chatBtn.addEventListener("click", toggleChat);
 
     closeBtn.addEventListener("click", () => {
         chatWindow.classList.remove("sb-active");
     });
+    
+    // Proactive popup logic
+    const proactivePopup = document.getElementById('sb-proactive-popup');
+    const proactiveClose = document.getElementById('sb-proactive-close');
+    
+    if (proactivePopup) {
+        setTimeout(() => {
+            // Only show if chat window is closed
+            if (!chatWindow.classList.contains("sb-active")) {
+                proactivePopup.style.display = 'block';
+            }
+        }, 3000); // Wait 3 seconds before showing
+        
+        proactivePopup.addEventListener("click", (e) => {
+            if (e.target !== proactiveClose) {
+                toggleChat();
+            }
+        });
+        
+        proactiveClose.addEventListener("click", (e) => {
+            e.stopPropagation();
+            proactivePopup.style.display = 'none';
+        });
+    }
 
     // Handle Lead Submission
     leadSubmitBtn.addEventListener("click", async () => {
@@ -209,7 +334,12 @@
         const msgDiv = document.createElement("div");
         msgDiv.className = `sb-message ${className}`;
         
-        let contentHtml = `<div>${escapeHtml(text)}</div>`;
+        let contentHtml = '';
+        if (className === 'sb-ai' && botAvatarUrl) {
+            contentHtml += `<img src="${botAvatarUrl}" class="sb-avatar" />`;
+        }
+        
+        contentHtml += `<div class="sb-message-bubble">${escapeHtml(text)}</div>`;
         
         if (sources && sources.length > 0) {
             contentHtml += `<div class="sb-sources-container">
