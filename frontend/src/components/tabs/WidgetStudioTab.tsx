@@ -10,6 +10,10 @@ export default function WidgetStudioTab() {
   // Customizer State
   const [botName, setBotName] = useState('BrainDesk Assistant');
   const [primaryColor, setPrimaryColor] = useState('#ef4444');
+  const [fontFamily, setFontFamily] = useState('Inter, sans-serif');
+  const [botAvatarUrl, setBotAvatarUrl] = useState('');
+  const [proactiveMessage, setProactiveMessage] = useState('');
+  
   const [greetingMsg, setGreetingMsg] = useState('Hi! Welcome to our site. How can I help you today?');
   const [position, setPosition] = useState<'bottom-right' | 'bottom-left'>('bottom-right');
   const [requireLead, setRequireLead] = useState(false);
@@ -18,20 +22,52 @@ export default function WidgetStudioTab() {
   const [webhookUrl, setWebhookUrl] = useState('');
   const [allowedDomains, setAllowedDomains] = useState('');
   const [isSavingStarterPrompts, setIsSavingStarterPrompts] = useState(false);
+  const [isSavingAppearance, setIsSavingAppearance] = useState(false);
   const [copied, setCopied] = useState(false);
 
   // Update customizer state when project changes
   useEffect(() => {
     const proj = projects.find(p => p.id === activeProjectId);
-    if (proj && proj.system_prompt) setSystemPrompt(proj.system_prompt);
-    else setSystemPrompt('');
-    if (proj && proj.starter_prompts) setStarterPrompts(proj.starter_prompts);
-    else setStarterPrompts('');
-    if (proj && proj.webhook_url) setWebhookUrl(proj.webhook_url);
-    else setWebhookUrl('');
-    if (proj && proj.allowed_domains) setAllowedDomains(proj.allowed_domains);
-    else setAllowedDomains('');
+    if (proj && proj.system_prompt) setSystemPrompt(proj.system_prompt); else setSystemPrompt('');
+    if (proj && proj.starter_prompts) setStarterPrompts(proj.starter_prompts); else setStarterPrompts('');
+    if (proj && proj.webhook_url) setWebhookUrl(proj.webhook_url); else setWebhookUrl('');
+    if (proj && proj.allowed_domains) setAllowedDomains(proj.allowed_domains); else setAllowedDomains('');
+    
+    // Styling states
+    if (proj && proj.theme_color) setPrimaryColor(proj.theme_color); else setPrimaryColor('#ef4444');
+    if (proj && proj.font_family) setFontFamily(proj.font_family); else setFontFamily('Inter, sans-serif');
+    if (proj && proj.bot_avatar_url) setBotAvatarUrl(proj.bot_avatar_url); else setBotAvatarUrl('');
+    if (proj && proj.proactive_message) setProactiveMessage(proj.proactive_message); else setProactiveMessage('');
   }, [activeProjectId, projects]);
+
+  const handleSaveAppearance = async () => {
+    setIsSavingAppearance(true);
+    try {
+      const res = await fetch(`${API_URL}/api/projects/${activeProjectId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ 
+          theme_color: primaryColor,
+          font_family: fontFamily,
+          bot_avatar_url: botAvatarUrl,
+          proactive_message: proactiveMessage
+        })
+      });
+      if (handleAuthError(res)) return;
+      if (res.ok) {
+        const data = await res.json();
+        setProjects(prev => prev.map(p => p.id === data.id ? data : p));
+        showToast('Appearance settings saved successfully!', 'success');
+      } else {
+        const data = await res.json();
+        showToast(data.detail || 'Failed to save appearance', 'error');
+      }
+    } catch {
+      showToast('Error connecting to backend API', 'error');
+    } finally {
+      setIsSavingAppearance(false);
+    }
+  };
 
   const handleUpdateSystemPrompt = async () => {
     try {
@@ -117,7 +153,7 @@ export default function WidgetStudioTab() {
     }
   };
 
-  const widgetCode = `<script \n  src="${API_URL}/static/sitebrain-widget.js" \n  data-widget-id="${activeProjectId}"\n  data-bot-name="${botName}" \n  data-color="${primaryColor}" \n  data-greeting="${greetingMsg}" \n  data-position="${position}"\n  data-require-lead="${requireLead}">\n</script>`;
+  const widgetCode = `<script \n  src="${API_URL}/static/sitebrain-widget.js" \n  data-widget-id="${activeProjectId}"\n  data-bot-name="${botName}" \n  data-color="${primaryColor}" \n  data-greeting="${greetingMsg}" \n  data-position="${position}"\n  data-require-lead="${requireLead}"\n  data-font-family="${fontFamily}"\n  data-bot-avatar-url="${botAvatarUrl}"\n  data-proactive-message="${proactiveMessage}">\n</script>`;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(widgetCode);
@@ -173,6 +209,26 @@ export default function WidgetStudioTab() {
               </select>
             </div>
 
+            <div className="form-group">
+              <label>Font Family</label>
+              <select value={fontFamily} onChange={(e) => setFontFamily(e.target.value)}>
+                <option value="Inter, sans-serif">Inter (Modern)</option>
+                <option value="Roboto, sans-serif">Roboto (Clean)</option>
+                <option value="'Courier New', monospace">Monospace (Code)</option>
+                <option value="Georgia, serif">Georgia (Classic)</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label>Bot Avatar URL</label>
+              <input type="text" placeholder="https://example.com/avatar.png" value={botAvatarUrl} onChange={(e) => setBotAvatarUrl(e.target.value)} />
+            </div>
+
+            <div className="form-group">
+              <label>Proactive Popup Message (Optional)</label>
+              <input type="text" placeholder="e.g. Chat with us!" value={proactiveMessage} onChange={(e) => setProactiveMessage(e.target.value)} />
+            </div>
+
             <div className="form-group" style={{ marginTop: '14px' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                 <input
@@ -184,6 +240,9 @@ export default function WidgetStudioTab() {
                 Require Visitor Lead Info (Pre-chat Name/Email)
               </label>
             </div>
+            <button className="btn-primary" onClick={handleSaveAppearance} disabled={isSavingAppearance} style={{ marginTop: '10px', width: '100%' }}>
+              {isSavingAppearance ? 'Saving...' : '💾 Save Appearance'}
+            </button>
           </div>
 
           <div className="glass-panel section-panel">

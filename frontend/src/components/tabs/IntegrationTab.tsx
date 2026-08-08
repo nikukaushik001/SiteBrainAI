@@ -2,16 +2,19 @@ import { useState } from 'react';
 import { useDashboard } from '../../context/DashboardContext';
 
 export default function IntegrationTab() {
-  const { activeProjectId, API_URL } = useDashboard();
+  const { activeProjectId, currentProject, API_URL } = useDashboard();
 
   const [integrationTab, setIntegrationTab] = useState<'html' | 'react' | 'nextjs'>('html');
 
   // Use widget customizer defaults for code generation
   const botName = 'BrainDesk Assistant';
-  const primaryColor = '#ef4444';
+  const primaryColor = currentProject?.theme_color || '#ef4444';
   const greetingMsg = 'Hi! Welcome to our site. How can I help you today?';
   const position = 'bottom-right';
   const requireLead = 'false';
+  const fontFamily = currentProject?.font_family || 'Inter, sans-serif';
+  const botAvatarUrl = currentProject?.bot_avatar_url || '';
+  const proactiveMessage = currentProject?.proactive_message || '';
 
   return (
     <div className="animate-fade-in">
@@ -62,7 +65,7 @@ export default function IntegrationTab() {
               <li style={{ marginBottom: '8px' }}>Paste the snippet just before the closing <code>&lt;/body&gt;</code> tag of your website's HTML template.</li>
             </ol>
             <div className="code-box" style={{ background: '#111827', color: '#e5e7eb', padding: '16px', borderRadius: '8px', fontSize: '13px', whiteSpace: 'pre', overflowX: 'auto' }}>
-              {`<!-- Paste your BrainDesk AI snippet here -->\n<script\n  src="${API_URL}/static/sitebrain-widget.js"\n  data-widget-id="${activeProjectId}"\n  data-bot-name="${botName}"\n  data-color="${primaryColor}"\n  data-greeting="${greetingMsg}"\n  data-position="${position}"\n  data-require-lead="${requireLead}">\n</script>\n</body>\n</html>`}
+              {`<!-- Paste your BrainDesk AI snippet here -->\n<script\n  src="${API_URL}/static/sitebrain-widget.js"\n  data-widget-id="${activeProjectId}"\n  data-bot-name="${botName}"\n  data-color="${primaryColor}"\n  data-greeting="${greetingMsg}"\n  data-position="${position}"\n  data-require-lead="${requireLead}"\n  data-font-family="${fontFamily}"\n  data-bot-avatar-url="${botAvatarUrl}"\n  data-proactive-message="${proactiveMessage}">\n</script>\n</body>\n</html>`}
             </div>
           </div>
         )}
@@ -80,7 +83,7 @@ export default function IntegrationTab() {
               <li style={{ marginBottom: '8px' }}>This ensures the chat widget persists across route changes in your Single Page Application.</li>
             </ol>
             <div className="code-box" style={{ background: '#111827', color: '#e5e7eb', padding: '16px', borderRadius: '8px', fontSize: '13px', whiteSpace: 'pre', overflowX: 'auto' }}>
-              {`import { useEffect } from 'react';\n\nexport default function App() {\n  useEffect(() => {\n    const script = document.createElement('script');\n    script.src = "${API_URL}/static/sitebrain-widget.js";\n    script.dataset.widgetId = "${activeProjectId}";\n    script.dataset.botName = "${botName}";\n    script.dataset.color = "${primaryColor}";\n    script.dataset.position = "${position}";\n    script.dataset.requireLead = "${requireLead}";\n    script.dataset.greeting = "${greetingMsg}";\n    script.async = true;\n    document.body.appendChild(script);\n\n    return () => {\n      // Cleanup if needed (optional)\n      // document.body.removeChild(script);\n    };\n  }, []);\n\n  return (\n    <div>\n      {/* Your app content */}\n    </div>\n  );\n}`}
+              {`import { useEffect } from 'react';\n\nexport default function App() {\n  useEffect(() => {\n    const script = document.createElement('script');\n    script.src = "${API_URL}/static/sitebrain-widget.js";\n    script.dataset.widgetId = "${activeProjectId}";\n    script.dataset.botName = "${botName}";\n    script.dataset.color = "${primaryColor}";\n    script.dataset.position = "${position}";\n    script.dataset.requireLead = "${requireLead}";\n    script.dataset.greeting = "${greetingMsg}";\n    script.dataset.fontFamily = "${fontFamily}";\n    script.dataset.botAvatarUrl = "${botAvatarUrl}";\n    script.dataset.proactiveMessage = "${proactiveMessage}";\n    script.async = true;\n    document.body.appendChild(script);\n\n    return () => {\n      // Cleanup if needed (optional)\n      // document.body.removeChild(script);\n    };\n  }, []);\n\n  return (\n    <div>\n      {/* Your app content */}\n    </div>\n  );\n}`}
             </div>
           </div>
         )}
@@ -98,7 +101,7 @@ export default function IntegrationTab() {
               <li style={{ marginBottom: '8px' }}>Add the Script tag inside the body using the <code>lazyOnload</code> or <code>afterInteractive</code> strategy so it doesn't block page rendering.</li>
             </ol>
             <div className="code-box" style={{ background: '#111827', color: '#e5e7eb', padding: '16px', borderRadius: '8px', fontSize: '13px', whiteSpace: 'pre', overflowX: 'auto' }}>
-              {`import Script from 'next/script';\n\nexport default function RootLayout({ children }) {\n  return (\n    <html lang="en">\n      <body>\n        {children}\n        \n        {/* BrainDesk AI Widget */}\n        <Script\n          src="${API_URL}/static/sitebrain-widget.js"\n          strategy="lazyOnload"\n          data-widget-id="${activeProjectId}"\n          data-bot-name="${botName}"\n          data-color="${primaryColor}"\n          data-greeting="${greetingMsg}"\n          data-position="${position}"\n          data-require-lead="${requireLead}"\n        />\n      </body>\n    </html>\n  );\n}`}
+              {`import Script from 'next/script';\n\nexport default function RootLayout({ children }) {\n  return (\n    <html lang="en">\n      <body>\n        {children}\n        \n        {/* BrainDesk AI Widget */}\n        <Script\n          src="${API_URL}/static/sitebrain-widget.js"\n          strategy="lazyOnload"\n          data-widget-id="${activeProjectId}"\n          data-bot-name="${botName}"\n          data-color="${primaryColor}"\n          data-greeting="${greetingMsg}"\n          data-position="${position}"\n          data-require-lead="${requireLead}"\n          data-font-family="${fontFamily}"\n          data-bot-avatar-url="${botAvatarUrl}"\n          data-proactive-message="${proactiveMessage}"\n        />\n      </body>\n    </html>\n  );\n}`}
             </div>
           </div>
         )}

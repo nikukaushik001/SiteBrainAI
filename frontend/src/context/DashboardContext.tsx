@@ -22,6 +22,10 @@ export interface Project {
   support_email?: string;
   operating_hours?: string;
   ai_persona?: string;
+  theme_color?: string;
+  font_family?: string;
+  bot_avatar_url?: string;
+  proactive_message?: string;
 }
 
 export interface AnalyticsLog {
