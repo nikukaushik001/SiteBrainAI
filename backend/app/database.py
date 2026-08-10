@@ -5,9 +5,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    raise ValueError("DATABASE_URL not found in environment variables")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./sitebrain.db")
 
 engine_args = {}
 if DATABASE_URL.startswith("sqlite"):
