@@ -54,21 +54,39 @@ export default function Sidebar() {
     }
   };
 
-  const navItems: { tab: TabType; icon: string; label: string; adminOnly?: boolean }[] = [
-    { tab: 'overview',      icon: '📊', label: 'Overview' },
-    { tab: 'playground',    icon: '💬', label: 'AI Playground' },
-    { tab: 'leads',         icon: '📬', label: 'Leads & Bookings' },
-    { tab: 'documents',     icon: '📄', label: 'Knowledge Base', adminOnly: true },
-    { tab: 'analytics',     icon: '📈', label: 'Analytics & Intelligence' },
-    { tab: 'conversations', icon: '🗂️', label: 'Conversations' },
-    { tab: 'profile',       icon: '🏢', label: 'Business Profile' },
-    { tab: 'billing',       icon: '💳', label: 'Billing & Subscription' },
-    { tab: 'clients',       icon: '👥', label: 'Client Management', adminOnly: true },
-    { tab: 'widget',        icon: '⚙️', label: 'Widget Studio', adminOnly: true },
-    { tab: 'integration',   icon: '🔌', label: 'Integration Guide', adminOnly: true },
+  const navCategories = [
+    {
+      category: 'Main',
+      items: [
+        { tab: 'overview',      icon: '📊', label: 'Overview' },
+        { tab: 'playground',    icon: '💬', label: 'AI Playground' },
+        { tab: 'conversations', icon: '🗂️', label: 'Conversations' },
+      ]
+    },
+    {
+      category: 'Insights',
+      items: [
+        { tab: 'leads',         icon: '📬', label: 'Leads & Bookings' },
+        { tab: 'analytics',     icon: '📈', label: 'Analytics' },
+      ]
+    },
+    {
+      category: 'Configuration',
+      items: [
+        { tab: 'profile',       icon: '🏢', label: 'Business Profile' },
+        { tab: 'documents',     icon: '📄', label: 'Knowledge Base', adminOnly: true },
+        { tab: 'widget',        icon: '⚙️', label: 'Widget Studio', adminOnly: true },
+        { tab: 'integration',   icon: '🔌', label: 'Integration Guide', adminOnly: true },
+      ]
+    },
+    {
+      category: 'Account',
+      items: [
+        { tab: 'clients',       icon: '👥', label: 'Clients', adminOnly: true },
+        { tab: 'billing',       icon: '💳', label: 'Billing' },
+      ]
+    }
   ];
-
-  const filteredNavItems = navItems.filter(item => !item.adminOnly || userRole === 'admin');
 
   return (
     <>
@@ -102,16 +120,28 @@ export default function Sidebar() {
 
           {/* Nav Links */}
           <nav className="nav-links">
-            {filteredNavItems.map(({ tab, icon, label }) => (
-              <div
-                key={tab}
-                className={`nav-item ${activeTab === tab ? 'active' : ''}`}
-                onClick={() => setActiveTab(tab)}
-              >
-                <span>{icon}</span>
-                {label}
-              </div>
-            ))}
+            {navCategories.map((cat, idx) => {
+              const visibleItems = cat.items.filter(item => !item.adminOnly || userRole === 'admin');
+              if (visibleItems.length === 0) return null;
+              
+              return (
+                <div key={cat.category} style={{ marginBottom: idx === navCategories.length - 1 ? 0 : '18px' }}>
+                  <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 600, padding: '0 12px 6px', letterSpacing: '0.5px' }}>
+                    {cat.category}
+                  </div>
+                  {visibleItems.map(({ tab, icon, label }) => (
+                    <div
+                      key={tab}
+                      className={`nav-item ${activeTab === tab ? 'active' : ''}`}
+                      onClick={() => setActiveTab(tab as TabType)}
+                    >
+                      <span>{icon}</span>
+                      {label}
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
           </nav>
         </div>
 
