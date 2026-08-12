@@ -1,5 +1,4 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/nikukaushik001/SiteBrainAI/main/frontend/public/vite.svg" alt="SiteBrain AI Logo" width="120" />
   <h1>🧠 SiteBrain AI</h1>
   <p><strong>A B2B SaaS platform providing customizable, RAG-powered AI customer support widgets for modern web applications.</strong></p>
 
