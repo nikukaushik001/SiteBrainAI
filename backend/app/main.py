@@ -1,3 +1,4 @@
+# Dummy comment for Antigravity commit
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, status, Response, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -27,12 +28,18 @@ Base.metadata.create_all(bind=engine)
 
 def run_migrations():
     with engine.begin() as conn:
-        # Add new columns if they don't exist
+        # Add new columns to tenants if they don't exist
         for col in ["phone_number", "support_email", "operating_hours", "ai_persona", "theme_color", "font_family", "bot_avatar_url", "proactive_message"]:
             try:
                 conn.execute(text(f"ALTER TABLE tenants ADD COLUMN {col} VARCHAR;"))
             except Exception:
                 pass # Column already exists
+        
+        # Add status column to chat_sessions
+        try:
+            conn.execute(text("ALTER TABLE chat_sessions ADD COLUMN status VARCHAR DEFAULT 'ai_active';"))
+        except Exception:
+            pass
 
 run_migrations()
 
