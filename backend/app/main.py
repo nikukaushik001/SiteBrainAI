@@ -1122,3 +1122,4 @@ def delete_document_endpoint(
         raise HTTPException(status_code=400, detail=res.get("error", "Failed to delete document."))
 
     return res
+# Dummy commit 1 from Antigravity
