@@ -40,6 +40,12 @@ def run_migrations():
             conn.execute(text("ALTER TABLE chat_sessions ADD COLUMN status VARCHAR DEFAULT 'ai_active';"))
         except Exception:
             pass
+            
+        # Add status column to leads
+        try:
+            conn.execute(text("ALTER TABLE leads ADD COLUMN status VARCHAR DEFAULT 'new';"))
+        except Exception:
+            pass
 
 run_migrations()
 
@@ -401,7 +407,7 @@ def get_leads(
         query = query.filter(Lead.widget_id == widget_id)
         
     leads = query.order_by(Lead.timestamp.desc()).all()
-    return [{"id": l.id, "widget_id": l.widget_id, "name": l.name, "email": l.email, "phone": l.phone, "notes": l.notes, "timestamp": l.timestamp} for l in leads]
+    return [{"id": l.id, "widget_id": l.widget_id, "name": l.name, "email": l.email, "phone": l.phone, "notes": l.notes, "status": l.status, "timestamp": l.timestamp} for l in leads]
 
 @app.delete("/api/leads/{lead_id}", tags=["Leads"])
 def delete_lead(
@@ -423,6 +429,31 @@ def delete_lead(
     db.delete(lead)
     db.commit()
     return {"message": "Lead deleted"}
+
+class LeadUpdateStatus(BaseModel):
+    status: str
+
+@app.patch("/api/leads/{lead_id}/status", tags=["Leads"])
+def update_lead_status(
+    lead_id: int,
+    status_data: LeadUpdateStatus,
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user)
+):
+    """Update lead status (e.g., new, contacted, converted)."""
+    user = db.query(User).filter(User.email == current_user.email).first()
+    lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+        
+    if current_user.role != "admin":
+        tenant = db.query(Tenant).filter(Tenant.id == lead.widget_id).first()
+        if not tenant or tenant.user_id != user.id:
+            raise HTTPException(status_code=403, detail="Forbidden")
+            
+    lead.status = status_data.status
+    db.commit()
+    return {"message": "Lead status updated"}
 def assign_project(
     project_id: str,
     user_email: str,
@@ -768,6 +799,7 @@ def get_leads(
             "email": l.email,
             "phone": l.phone,
             "notes": l.notes,
+            "status": getattr(l, "status", "new"),
             "timestamp": l.timestamp.strftime("%Y-%m-%d %H:%M:%S") if l.timestamp else None
         }
         for l in leads

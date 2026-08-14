@@ -53,12 +53,14 @@ class Lead(Base):
     email = Column(String, nullable=False)
     phone = Column(String, nullable=True)
     notes = Column(String, nullable=True)
+    status = Column(String, default="new") # "new", "contacted", "converted"
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
 
 class ChatSession(Base):
     __tablename__ = "chat_sessions"
     id = Column(String, primary_key=True, index=True) # UUID
     widget_id = Column(String, index=True, nullable=False)
+    status = Column(String, default="ai_active") # "ai_active" or "human_active"
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
 
 class ChatMessage(Base):
