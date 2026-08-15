@@ -555,6 +555,31 @@ def delete_project(
     db.commit()
     return {"status": "success", "message": f"Project {tenant_id} deleted."}
 
+# ── System Status ─────────────────────────────────────────────────────────────
+
+import time
+START_TIME = time.time()
+
+@app.get("/api/system/status", tags=["System"])
+def system_status(db: Session = Depends(get_db)):
+    """Health check and basic system metrics."""
+    try:
+        tenant_count = db.query(Tenant).count()
+        db_status = "connected"
+    except Exception as e:
+        tenant_count = 0
+        db_status = f"error: {str(e)}"
+        
+    uptime_seconds = int(time.time() - START_TIME)
+    
+    return {
+        "status": "healthy" if db_status == "connected" else "degraded",
+        "uptime_seconds": uptime_seconds,
+        "database": db_status,
+        "total_projects": tenant_count,
+        "version": "1.0.0"
+    }
+
 
 # ── Analytics ─────────────────────────────────────────────────────────────────
 
