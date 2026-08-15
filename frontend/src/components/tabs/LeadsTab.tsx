@@ -57,6 +57,29 @@ export default function LeadsTab() {
     }
   };
 
+  const exportToCSV = () => {
+    if (leads.length === 0) return;
+    const headers = ['Date', 'Name', 'Email', 'Phone', 'Notes'];
+    const csvContent = [
+      headers.join(','),
+      ...leads.map(lead => [
+        new Date(lead.timestamp).toLocaleDateString(),
+        `"${lead.name}"`,
+        `"${lead.email}"`,
+        `"${lead.phone || ''}"`,
+        `"${(lead.notes || '').replace(/"/g, '""')}"`
+      ].join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute('download', `leads_${currentProject?.name || 'export'}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="tab-pane animate-fade-in">
       <div className="tab-header">
@@ -64,6 +87,12 @@ export default function LeadsTab() {
           <h2>Leads & Bookings</h2>
           <p>View customers who wanted to book or get a quote through your AI.</p>
         </div>
+        <button className="btn-primary" onClick={exportToCSV} disabled={leads.length === 0} style={{ alignSelf: 'flex-start' }}>
+          <svg style={{ width: '16px', height: '16px', marginRight: '8px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+          Export CSV
+        </button>
       </div>
 
       <div style={{ marginTop: '24px' }}>
