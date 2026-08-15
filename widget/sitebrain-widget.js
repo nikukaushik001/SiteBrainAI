@@ -148,7 +148,10 @@
                     ${botAvatarUrl ? `<img src="${botAvatarUrl}" class="sb-avatar" />` : ''}
                     <h3 style="margin: 0;">${botName}</h3>
                 </div>
-                <button class="sb-close-btn" id="sb-close">&times;</button>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <button class="sb-close-btn" id="sb-clear" style="font-size: 16px; margin-right: -4px;" title="Reset Chat">&#x21bb;</button>
+                    <button class="sb-close-btn" id="sb-close">&times;</button>
+                </div>
             </div>
 
             <!-- Lead Capture Form View -->
@@ -200,6 +203,7 @@
     // 3. Elements and Event Listeners
     const chatBtn = document.getElementById("sitebrain-chat-btn");
     const closeBtn = document.getElementById("sb-close");
+    const clearBtn = document.getElementById("sb-clear");
     const chatWindow = document.getElementById("sitebrain-chat-window");
     const sendBtn = document.getElementById("sb-send");
     const micBtn = document.getElementById("sb-mic");
@@ -231,6 +235,22 @@
 
     closeBtn.addEventListener("click", () => {
         chatWindow.classList.remove("sb-active");
+    });
+
+    clearBtn.addEventListener("click", () => {
+        if(confirm("Are you sure you want to reset the chat?")) {
+            // Remove all messages except the first greeting
+            const messages = messagesArea.querySelectorAll('.sb-message');
+            messages.forEach((msg, index) => {
+                if(index > 0) msg.remove(); // Keep the first AI greeting
+            });
+            // Show starter chips again if they exist
+            const chips = document.getElementById("sb-chips");
+            if(chips) chips.style.display = "flex";
+            
+            // Re-append loading element
+            messagesArea.appendChild(loading);
+        }
     });
     
     // Proactive popup logic
