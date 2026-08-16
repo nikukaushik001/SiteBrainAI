@@ -116,6 +116,10 @@ interface DashboardContextType {
 
   // Logout
   handleLogout: () => void;
+
+  // Theme
+  isDarkMode: boolean;
+  toggleDarkMode: () => void;
 }
 
 const DashboardContext = createContext<DashboardContextType | null>(null);
@@ -178,6 +182,32 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   });
   const [leadsData, setLeadsData] = useState<Lead[]>([]);
   const [bookingsData, setBookingsData] = useState<any[]>([]);
+
+  // ── Theme State ──
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('braindesk_theme') !== 'light';
+    } catch {
+      return true; // Default to dark
+    }
+  });
+
+  const toggleDarkMode = useCallback(() => {
+    setIsDarkMode(prev => {
+      const newVal = !prev;
+      localStorage.setItem('braindesk_theme', newVal ? 'dark' : 'light');
+      return newVal;
+    });
+  }, []);
+
+  // ── Apply Theme Class to Body ──
+  useEffect(() => {
+    if (isDarkMode) {
+      document.body.classList.remove('light-mode');
+    } else {
+      document.body.classList.add('light-mode');
+    }
+  }, [isDarkMode]);
 
   const currentProject = projects.find(p => p.id === activeProjectId) || projects[0] || { id: activeProjectId, name: 'Loading...' };
 
@@ -294,6 +324,8 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     fetchBookings,
     showToast,
     handleLogout,
+    isDarkMode,
+    toggleDarkMode,
   };
 
   return (
