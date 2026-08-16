@@ -6,7 +6,7 @@ export default function Sidebar() {
   const {
     userRole, projects, activeProjectId, setActiveProjectId,
     activeTab, setActiveTab, API_URL, getAuthHeaders,
-    handleAuthError, setProjects, showToast
+    handleAuthError, setProjects, showToast, isDarkMode, toggleDarkMode
   } = useDashboard();
 
   // Project Creation Modal State
@@ -146,11 +146,25 @@ export default function Sidebar() {
         </div>
 
         {/* Sidebar Footer */}
-        <div className="sidebar-footer">
+        <div className="sidebar-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div className="status-badge">
             <span className="status-dot" />
             Backend: Online
           </div>
+          <button 
+            onClick={toggleDarkMode} 
+            title="Toggle Theme"
+            style={{ 
+              background: 'transparent', 
+              border: 'none', 
+              color: 'var(--text-muted)', 
+              cursor: 'pointer',
+              fontSize: '16px',
+              padding: '4px'
+            }}
+          >
+            {isDarkMode ? '🌙' : '☀️'}
+          </button>
         </div>
       </aside>
 
