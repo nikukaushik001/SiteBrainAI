@@ -79,6 +79,21 @@ export default function ConversationsTab() {
     }
   };
 
+  const downloadChat = () => {
+    if (messages.length === 0) return;
+    const textContent = messages.map(msg => 
+      `[${formatTime(msg.timestamp)}] ${msg.role === 'user' ? 'Visitor' : 'AI'}: ${msg.content}`
+    ).join('\n\n');
+    
+    const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `chat_log_${selectedSession?.slice(0, 8)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="animate-fade-in">
       <div className="header">
@@ -141,9 +156,19 @@ export default function ConversationsTab() {
             <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-subtle)', fontWeight: 700, fontSize: '14px', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span>💬 Conversation Thread</span>
               {selectedSession && (
-                <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 400, fontFamily: 'monospace' }}>
-                  {selectedSession.slice(0, 8)}...
-                </span>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 400, fontFamily: 'monospace' }}>
+                    {selectedSession.slice(0, 8)}...
+                  </span>
+                  <button 
+                    onClick={downloadChat}
+                    className="btn-secondary" 
+                    style={{ padding: '4px 10px', fontSize: '11px' }}
+                    title="Download Chat Log"
+                  >
+                    📥 Download
+                  </button>
+                </div>
               )}
             </div>
 
