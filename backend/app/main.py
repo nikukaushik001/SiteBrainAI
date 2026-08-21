@@ -29,11 +29,16 @@ Base.metadata.create_all(bind=engine)
 def run_migrations():
     with engine.begin() as conn:
         # Add new columns to tenants if they don't exist
-        for col in ["phone_number", "support_email", "operating_hours", "ai_persona", "theme_color", "font_family", "bot_avatar_url", "proactive_message"]:
+        for col in ["system_prompt", "starter_prompts", "webhook_url", "allowed_domains", "phone_number", "support_email", "operating_hours", "ai_persona", "theme_color", "font_family", "bot_avatar_url", "proactive_message"]:
             try:
                 conn.execute(text(f"ALTER TABLE tenants ADD COLUMN {col} VARCHAR;"))
             except Exception:
                 pass # Column already exists
+        
+        try:
+            conn.execute(text("ALTER TABLE tenants ADD COLUMN user_id INTEGER;"))
+        except Exception:
+            pass
         
         # Add status column to chat_sessions
         try:

@@ -48,7 +48,7 @@ retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
 
 # Initialize the LLM (Groq Llama 3.3)
 llm = ChatGroq(
-    model_name="llama-3.3-70b-versatile",
+    model_name="llama3-8b-8192",
     temperature=0.0
 )
 
