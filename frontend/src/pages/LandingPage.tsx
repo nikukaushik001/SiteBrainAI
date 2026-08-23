@@ -33,12 +33,12 @@ export default function LandingPage() {
       script.id = 'braindesk-demo-widget';
       script.src = `/sitebrain-widget.js?v=${Date.now()}`;
       script.dataset.widgetId = 'default';
-      script.dataset.botName = 'SiteBrain AI';
+      script.dataset.botName = 'BrainDesk AI';
       script.dataset.color = '#ef4444';
-      script.dataset.greeting = "Hey! 👋 I'm SiteBrain AI — a live demo of what your business could have. Ask me anything about our product, or try the 🎙️ mic button to talk to me!";
+      script.dataset.greeting = "Hey! 👋 I'm BrainDesk AI — a live demo of what your business could have. Ask me anything about our product, or try the 🎙️ mic button to talk to me!";
       script.dataset.position = 'bottom-right';
       script.dataset.requireLead = 'false';
-      script.dataset.starterPrompts = "What is SiteBrain AI?, How does Voice AI work?";
+      script.dataset.starterPrompts = "What is BrainDesk AI?, How does Voice AI work?";
       document.body.appendChild(script);
     }
     return () => {
@@ -173,7 +173,7 @@ export default function LandingPage() {
           <div className="lp-section-header">
             <span className="lp-section-tag">CAPABILITIES</span>
             <h2>Everything your business needs.<br />Nothing it doesn't.</h2>
-            <p>Three killer features that make SiteBrain AI leagues ahead of any chatbot builder.</p>
+            <p>Three killer features that make BrainDesk AI leagues ahead of any chatbot builder.</p>
           </div>
 
           <div className="lp-features-grid">
@@ -282,7 +282,7 @@ export default function LandingPage() {
       <footer className="lp-footer">
         <div className="lp-footer-inner">
           <Logo style={{ justifyContent: 'center', marginBottom: '16px' }} />
-          <p>&copy; {new Date().getFullYear()} SiteBrain AI. Built with Gemini &amp; Groq.</p>
+          <p>&copy; {new Date().getFullYear()} BrainDesk AI. Built with Gemini &amp; Groq.</p>
         </div>
       </footer>
     </div>
