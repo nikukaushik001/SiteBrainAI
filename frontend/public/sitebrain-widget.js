@@ -21,7 +21,7 @@
     
     const API_URL = `${baseUrl}/chat`;
     const LEAD_API_URL = `${baseUrl}/api/leads`;
-    const CSS_URL = `${baseUrl}/static/sitebrain-widget.css`;
+    const CSS_URL = `${baseUrl}/sitebrain-widget.css`;
 
     // Check if lead was already captured for this session
     let leadSubmitted = !requireLead || (sessionStorage.getItem(`sb_lead_${widgetId}`) === "true");

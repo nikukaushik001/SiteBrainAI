@@ -31,7 +31,7 @@ export default function LandingPage() {
     if (!document.getElementById('braindesk-demo-widget')) {
       const script = document.createElement('script');
       script.id = 'braindesk-demo-widget';
-      script.src = `${API_URL}/static/sitebrain-widget.js?v=${Date.now()}`;
+      script.src = `/sitebrain-widget.js?v=${Date.now()}`;
       script.dataset.widgetId = 'default';
       script.dataset.botName = 'SiteBrain AI';
       script.dataset.color = '#ef4444';
