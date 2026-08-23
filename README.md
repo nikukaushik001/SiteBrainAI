@@ -1,8 +1,8 @@
 <div align="center">
-  <h1>🧠 SiteBrain AI</h1>
+  <h1>🧠 BrainDesk AI</h1>
   <p><strong>A B2B SaaS platform providing customizable, RAG-powered AI customer support widgets for modern web applications.</strong></p>
 
-  ![SiteBrain AI](https://img.shields.io/badge/Status-Active-brightgreen.svg)
+  ![BrainDesk AI](https://img.shields.io/badge/Status-Active-brightgreen.svg)
   ![Python](https://img.shields.io/badge/Python-3.11-blue.svg)
   ![FastAPI](https://img.shields.io/badge/FastAPI-0.109-teal.svg)
   ![React](https://img.shields.io/badge/React-18.0-61dafb.svg)
@@ -10,7 +10,7 @@
 
 <br />
 
-SiteBrain AI empowers businesses to create, train, and deploy intelligent AI chatbots directly onto their websites in minutes. By leveraging Retrieval-Augmented Generation (RAG) and vector embeddings, the AI acts as a domain expert, answering customer inquiries instantly based exclusively on the company's uploaded documents and scraped website content.
+BrainDesk AI empowers businesses to create, train, and deploy intelligent AI chatbots directly onto their websites in minutes. By leveraging Retrieval-Augmented Generation (RAG) and vector embeddings, the AI acts as a domain expert, answering customer inquiries instantly based exclusively on the company's uploaded documents and scraped website content.
 
 ## 🎯 Key Features
 

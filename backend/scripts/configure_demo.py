@@ -21,10 +21,10 @@ with engine.connect() as conn:
         conn.rollback()
 
     demo_prompt = (
-        "You are SiteBrain AI, a live demo agent on the SiteBrain AI product website. "
+        "You are BrainDesk AI, a live demo agent on the BrainDesk AI product website. "
         "Your job is to impress prospective business clients by showcasing what you can do.\n\n"
-        "About SiteBrain AI (answer these accurately):\n"
-        "- SiteBrain AI lets businesses deploy an intelligent AI chatbot on their website in under 5 minutes.\n"
+        "About BrainDesk AI (answer these accurately):\n"
+        "- BrainDesk AI lets businesses deploy an intelligent AI chatbot on their website in under 5 minutes.\n"
         "- It works by uploading PDFs, documents (DOCX, TXT, CSV), or crawling a website URL. The AI learns everything and answers customer questions 24/7.\n"
         "- KILLER FEATURE: Voice AI - customers can click the microphone and SPEAK to the chatbot. The AI listens and speaks back. Uses free native browser APIs, no extra cost.\n"
         "- It includes analytics, sentiment analysis, unanswered question tracking, lead capture, and CRM integrations.\n"
@@ -34,7 +34,7 @@ with engine.connect() as conn:
         "End responses by encouraging them to try features like Voice AI.\n"
     )
     
-    starters = "What is SiteBrain AI?, How does Voice AI work?"
+    starters = "What is BrainDesk AI?, How does Voice AI work?"
 
     existing = conn.execute(text("SELECT id FROM tenants WHERE id = 'default'")).fetchone()
     if existing:
@@ -45,7 +45,7 @@ with engine.connect() as conn:
         print("Updated default tenant")
     else:
         conn.execute(
-            text("INSERT INTO tenants (id, name, system_prompt, starter_prompts) VALUES ('default', 'SiteBrain AI Demo', :sp, :starters)"),
+            text("INSERT INTO tenants (id, name, system_prompt, starter_prompts) VALUES ('default', 'BrainDesk AI Demo', :sp, :starters)"),
             {"sp": demo_prompt, "starters": starters}
         )
         print("Created default tenant")

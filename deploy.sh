@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "Starting SiteBrain AI Deployment..."
+echo "Starting BrainDesk AI Deployment..."
 
 # Check if docker is installed
 if ! command -v docker &> /dev/null
@@ -19,6 +19,6 @@ fi
 echo "Building and starting containers..."
 docker-compose --env-file .env up -d --build
 
-echo "Deployment complete! SiteBrain AI is now running."
+echo "Deployment complete! BrainDesk AI is now running."
 echo "Frontend: http://localhost"
 echo "Backend API: http://localhost/api"
