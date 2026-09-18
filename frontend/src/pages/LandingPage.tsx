@@ -1,7 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
 import Logo from '../components/Logo';
-import { API_URL } from '../config';
 import '../App.css';
 
 export default function LandingPage() {
@@ -33,12 +32,12 @@ export default function LandingPage() {
       script.id = 'braindesk-demo-widget';
       script.src = `/sitebrain-widget.js?v=${Date.now()}`;
       script.dataset.widgetId = 'default';
-      script.dataset.botName = 'BrainDesk AI';
+      script.dataset.botName = 'SiteBrain AI';
       script.dataset.color = '#ef4444';
-      script.dataset.greeting = "Hey! 👋 I'm BrainDesk AI — a live demo of what your business could have. Ask me anything about our product, or try the 🎙️ mic button to talk to me!";
+      script.dataset.greeting = "Hey! 👋 I'm SiteBrain AI — a live demo of what your business could have. Ask me anything about our product, or try the 🎙️ mic button to talk to me!";
       script.dataset.position = 'bottom-right';
       script.dataset.requireLead = 'false';
-      script.dataset.starterPrompts = "What is BrainDesk AI?, How does Voice AI work?";
+      script.dataset.starterPrompts = "What is SiteBrain AI?, How does Voice AI work?";
       document.body.appendChild(script);
     }
     return () => {
@@ -98,13 +97,29 @@ export default function LandingPage() {
 
       {/* Navigation */}
       <nav className="lp-nav">
-        <Logo onClick={() => navigate('/')} />
+        {/* Left: Logo */}
+        <div className="lp-nav-logo-col">
+          <Logo onClick={() => navigate('/')} />
+        </div>
+
+        {/* Center: Nav Links */}
         <div className="lp-nav-links">
           <a href="#features" className="lp-nav-link">Features</a>
           <a href="#how-it-works" className="lp-nav-link">How It Works</a>
           <a href="#stats" className="lp-nav-link">Results</a>
         </div>
+
+        {/* Right: Actions */}
         <div className="lp-nav-actions">
+          <a
+            href="https://github.com/nikukaushik001/SiteBrainAI"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="lp-btn-ghost"
+            style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
+          >
+            ⭐ GitHub
+          </a>
           <button className="lp-btn-ghost" onClick={() => navigate('/login')}>Log In</button>
           <button className="lp-btn-primary" onClick={openWidget}>
             Try Live Demo
@@ -118,17 +133,16 @@ export default function LandingPage() {
         <div className="lp-hero-inner">
           <div className="lp-hero-badge">
             <span className="lp-badge-dot"></span>
-            Voice AI &bull; Autonomous Agents &bull; RAG Knowledge Base
+            Agentic AI Platform &bull; RAG Knowledge Base &bull; Multi-Tenant SaaS
           </div>
 
           <h1 className="lp-hero-title">
             Your website deserves<br />
-            <span className="lp-gradient-text">an AI employee.</span>
+            <span className="lp-gradient-text">an AI agent.</span>
           </h1>
 
           <p className="lp-hero-desc">
-            Deploy an intelligent AI agent that reads your docs, talks to your visitors with a real voice, 
-            and books meetings on autopilot. Not a chatbot — an <em>autonomous team member</em>.
+            Deploy an autonomous AI agent that reads your docs, qualifies leads, books meetings, and escalates to humans — all without writing a single line of backend code. Not a chatbot — a <em>real agentic system</em>.
           </p>
 
           <div className="lp-hero-cta">
@@ -145,14 +159,14 @@ export default function LandingPage() {
           <p className="lp-hero-hint">↘ Click the chat bubble in the bottom-right corner to talk to it</p>
         </div>
 
-        {/* Floating feature tags */}
-        <div className="lp-floating-tags">
-          <span className="lp-ftag lp-ftag-1">🎙️ Voice</span>
-          <span className="lp-ftag lp-ftag-2">📅 Booking</span>
-          <span className="lp-ftag lp-ftag-3">🧠 RAG</span>
-          <span className="lp-ftag lp-ftag-4">📊 Analytics</span>
-          <span className="lp-ftag lp-ftag-5">🔗 Webhooks</span>
-        </div>
+          {/* Floating feature tags */}
+          <div className="lp-floating-tags">
+            <span className="lp-ftag lp-ftag-1">🔧 Tool Calling</span>
+            <span className="lp-ftag lp-ftag-2">📅 Booking Agent</span>
+            <span className="lp-ftag lp-ftag-3">🧠 RAG + ChromaDB</span>
+            <span className="lp-ftag lp-ftag-4">📊 Live Analytics</span>
+            <span className="lp-ftag lp-ftag-5">🔗 Webhooks</span>
+          </div>
       </section>
 
       {/* Trusted By */}
@@ -173,7 +187,7 @@ export default function LandingPage() {
           <div className="lp-section-header">
             <span className="lp-section-tag">CAPABILITIES</span>
             <h2>Everything your business needs.<br />Nothing it doesn't.</h2>
-            <p>Three killer features that make BrainDesk AI leagues ahead of any chatbot builder.</p>
+            <p>Three agentic features that make SiteBrain AI leagues ahead of any chatbot builder.</p>
           </div>
 
           <div className="lp-features-grid">
@@ -282,7 +296,7 @@ export default function LandingPage() {
       <footer className="lp-footer">
         <div className="lp-footer-inner">
           <Logo style={{ justifyContent: 'center', marginBottom: '16px' }} />
-          <p>&copy; {new Date().getFullYear()} BrainDesk AI. Built with Gemini &amp; Groq.</p>
+          <p>&copy; {new Date().getFullYear()} SiteBrain AI. Built with LangChain, Groq &amp; ChromaDB.</p>
         </div>
       </footer>
     </div>

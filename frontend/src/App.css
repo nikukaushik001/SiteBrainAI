@@ -1387,17 +1387,23 @@ code {
   position: sticky;
   top: 0;
   z-index: 100;
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  padding: 16px 48px;
-  background: rgba(5, 6, 15, 0.7);
-  backdrop-filter: blur(20px) saturate(1.5);
-  border-bottom: 1px solid rgba(255,255,255,0.04);
+  padding: 14px 48px;
+  background: rgba(5, 6, 15, 0.75);
+  backdrop-filter: blur(24px) saturate(1.6);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.lp-nav-logo-col {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 .lp-nav-links {
   display: flex;
   gap: 32px;
+  justify-content: center;
 }
 .lp-nav-link {
   color: #94a3b8;
@@ -1409,8 +1415,9 @@ code {
 .lp-nav-link:hover { color: #fff; }
 .lp-nav-actions {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
+  justify-content: flex-end;
 }
 
 /* --- Buttons --- */
@@ -1905,7 +1912,7 @@ code {
   .lp-step-connector { width: auto; height: 32px; }
   .lp-step-connector::after { content: '↓'; }
   .lp-nav-links { display: none; }
-  .lp-nav { padding: 16px 20px; }
+  .lp-nav { padding: 14px 20px; grid-template-columns: 1fr auto; }
   .lp-floating-tags { display: none; }
   .lp-fcard-ribbon { display: none; }
 }

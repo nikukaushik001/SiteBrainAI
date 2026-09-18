@@ -19,9 +19,12 @@
     const scriptSrc = currentScript ? currentScript.src : "http://127.0.0.1:8000/static/sitebrain-widget.js";
     const baseUrl = new URL(scriptSrc).origin; // e.g. "http://127.0.0.1:8000"
     
-    const API_URL = `${baseUrl}/chat`;
-    const LEAD_API_URL = `${baseUrl}/api/leads`;
-    const CSS_URL = `${baseUrl}/sitebrain-widget.css`;
+    // Allow explicitly passing the API base URL via data-api-url (useful for dev/demo)
+    const configuredApiUrl = (currentScript && currentScript.dataset.apiUrl) || baseUrl;
+    
+    const API_URL = `${configuredApiUrl}/chat`;
+    const LEAD_API_URL = `${configuredApiUrl}/api/leads`;
+    const CSS_URL = new URL('sitebrain-widget.css', scriptSrc).href;
 
     // Check if lead was already captured for this session
     let leadSubmitted = !requireLead || (sessionStorage.getItem(`sb_lead_${widgetId}`) === "true");
@@ -347,7 +350,7 @@
             loading.style.display = "none";
             const demoResponse = `*(Demo Mode)* The backend is currently offline for this portfolio showcase. If it were active, I would have searched the vectorized knowledge base to answer: "${text}".`;
             addMessage(demoResponse, "sb-ai");
-            console.error("BrainDesk Error (Demo Fallback):", error);
+            console.error("SiteBrain Error (Demo Fallback):", error);
         }
     };
 

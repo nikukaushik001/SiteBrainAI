@@ -64,6 +64,12 @@ export default function Sidebar() {
       ]
     },
     {
+      category: '🤖 Agentic AI',
+      items: [
+        { tab: 'agent-trace',   icon: '🧠', label: 'Agent Trace (Live)' },
+      ]
+    },
+    {
       category: 'Insights',
       items: [
         { tab: 'leads',         icon: '📬', label: 'Leads & Bookings' },

@@ -21,7 +21,7 @@
     
     const API_URL = `${baseUrl}/chat`;
     const LEAD_API_URL = `${baseUrl}/api/leads`;
-    const CSS_URL = `${baseUrl}/static/sitebrain-widget.css`;
+    const CSS_URL = new URL('sitebrain-widget.css', scriptSrc).href;
 
     // Check if lead was already captured for this session
     let leadSubmitted = !requireLead || (sessionStorage.getItem(`sb_lead_${widgetId}`) === "true");
@@ -347,7 +347,7 @@
             loading.style.display = "none";
             const demoResponse = `*(Demo Mode)* The backend is currently offline for this portfolio showcase. If it were active, I would have searched the vectorized knowledge base to answer: "${text}".`;
             addMessage(demoResponse, "sb-ai");
-            console.error("BrainDesk Error (Demo Fallback):", error);
+            console.error("SiteBrain Error (Demo Fallback):", error);
         }
     };
 

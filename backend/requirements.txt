@@ -12,10 +12,11 @@ langchain-text-splitters
 langchain-community
 python-multipart
 sqlalchemy
-psycopg2
+psycopg2-binary
 python-jose[cryptography]
 passlib[bcrypt]
 bcrypt
 beautifulsoup4
-requests  
- 
+requests
+python-docx
+lxml

@@ -5,16 +5,18 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 export default function AnalyticsTab() {
   const {
     currentProject, activeProjectId, API_URL, analyticsData, leadsData, bookingsData,
-    getAuthHeaders, handleAuthError, fetchAnalytics, showToast
+    getAuthHeaders, handleAuthError, fetchAnalytics, showToast, setActiveTab
   } = useDashboard();
 
   const [analyticsSubTab, setAnalyticsSubTab] = useState<'intelligence' | 'leads' | 'bookings'>('intelligence');
   const [isGeneratingFaq, setIsGeneratingFaq] = useState(false);
   const [faqResult, setFaqResult] = useState('');
+  const [knowledgeGaps, setKnowledgeGaps] = useState<string[]>([]);
 
   const handleGenerateFAQ = async () => {
     setIsGeneratingFaq(true);
     setFaqResult('');
+    setKnowledgeGaps([]);
     try {
       const res = await fetch(`${API_URL}/analytics/generate-faq?widget_id=${activeProjectId}`, {
         method: 'POST',
@@ -23,10 +25,11 @@ export default function AnalyticsTab() {
       if (handleAuthError(res)) return;
       const data = await res.json();
       if (res.ok) {
-        setFaqResult(data.faq);
-        showToast('FAQ generated successfully!', 'success');
+        setFaqResult(data.faq || '');
+        setKnowledgeGaps(data.knowledge_gaps || []);
+        showToast('AI Analysis complete!', 'success');
       } else {
-        showToast(data.detail || 'Failed to generate FAQ.', 'error');
+        showToast(data.detail || 'Failed to generate analysis.', 'error');
       }
     } catch {
       showToast('Error connecting to backend API', 'error');
@@ -81,15 +84,49 @@ export default function AnalyticsTab() {
         </div>
       </div>
 
-      {faqResult && (
-        <div className="glass-panel section-panel" style={{ marginBottom: '20px' }}>
-          <div className="section-title">
-            <span>🤖</span> AI-Generated FAQ
-            <button className="btn-secondary" onClick={() => setFaqResult('')} style={{ float: 'right', padding: '4px 10px', fontSize: '12px' }}>Close</button>
-          </div>
-          <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '14px', lineHeight: 1.6, background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: '8px' }}>
-            {faqResult}
-          </pre>
+      {(faqResult || knowledgeGaps.length > 0) && (
+        <div style={{ display: 'grid', gridTemplateColumns: knowledgeGaps.length > 0 && faqResult ? '1fr 1fr' : '1fr', gap: '16px', marginBottom: '20px' }}>
+          {faqResult && (
+            <div className="glass-panel section-panel">
+              <div className="section-title">
+                <span>🤖</span> AI-Generated FAQ
+                <button className="btn-secondary" onClick={() => setFaqResult('')} style={{ float: 'right', padding: '4px 10px', fontSize: '12px' }}>Close</button>
+              </div>
+              <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '13px', lineHeight: 1.6, background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: '8px', maxHeight: '280px', overflowY: 'auto' }}>
+                {faqResult}
+              </pre>
+            </div>
+          )}
+          {knowledgeGaps.length > 0 && (
+            <div className="glass-panel section-panel" style={{ border: '1px solid rgba(249,115,22,0.25)' }}>
+              <div className="section-title" style={{ color: '#f97316' }}>
+                <span>⚠️</span> Knowledge Gap Report
+                <button className="btn-secondary" onClick={() => setKnowledgeGaps([])} style={{ float: 'right', padding: '4px 10px', fontSize: '12px' }}>Close</button>
+              </div>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '14px' }}>
+                The AI could not answer questions about these <strong>{knowledgeGaps.length}</strong> topics. Upload relevant documents to fix these gaps.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {knowledgeGaps.map((gap, i) => (
+                  <div key={i} style={{
+                    display: 'flex', alignItems: 'center', gap: '10px',
+                    background: 'rgba(249,115,22,0.07)', borderRadius: '8px',
+                    padding: '8px 12px', border: '1px solid rgba(249,115,22,0.15)'
+                  }}>
+                    <span style={{ color: '#f97316', fontSize: '14px' }}>🔍</span>
+                    <span style={{ flex: 1, fontSize: '13px', color: 'var(--text-primary)' }}>{gap}</span>
+                    <button
+                      className="btn-secondary"
+                      style={{ padding: '3px 10px', fontSize: '11px', color: '#f97316', borderColor: 'rgba(249,115,22,0.4)' }}
+                      onClick={() => setActiveTab('documents')}
+                    >
+                      Fix →
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

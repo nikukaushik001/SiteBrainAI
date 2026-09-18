@@ -18,7 +18,7 @@ from app.auth import (
     create_access_token, get_current_user,
     Token, TokenData, timedelta, ACCESS_TOKEN_EXPIRE_MINUTES
 )
-from app.ai_service import ask_question, ask_question_stream, embed_document, embed_url, crawl_sitemap, get_db_stats, reset_vectorstore, delete_document_source
+from app.ai_service import ask_question, ask_question_stream, embed_document, embed_url, crawl_sitemap, get_db_stats, reset_vectorstore, delete_document_source, get_traces
 
 
 from sqlalchemy import text
@@ -665,19 +665,41 @@ def generate_faq(
     from langchain.schema import SystemMessage, HumanMessage
     
     logs = db.query(QueryLog).filter(QueryLog.widget_id == widget_id, QueryLog.is_unanswered == False).order_by(QueryLog.timestamp.desc()).limit(100).all()
-    if not logs:
-        raise HTTPException(status_code=400, detail="No answered queries available to generate FAQ.")
-        
-    qa_text = "\n".join([f"Q: {log.question}\nA: {log.answer}" for log in logs])
+    unanswered_logs = db.query(QueryLog).filter(QueryLog.widget_id == widget_id, QueryLog.is_unanswered == True).order_by(QueryLog.timestamp.desc()).limit(50).all()
+
+    if not logs and not unanswered_logs:
+        raise HTTPException(status_code=400, detail="No query history available to generate report.")
     
-    msg = [
-        SystemMessage(content="You are an expert documentation writer. Given a list of customer Q&As, group them logically and generate a clean, structured FAQ document in Markdown. Do not include introductory text, just the Markdown."),
-        HumanMessage(content=f"Generate FAQ for these Q&As:\n\n{qa_text}")
-    ]
-    
-    res = llm.invoke(msg)
-    faq_content = res.content if hasattr(res, 'content') else str(res)
-    return {"status": "success", "faq": faq_content}
+    faq_content = ""
+    if logs:
+        qa_text = "\n".join([f"Q: {log.question}\nA: {log.answer}" for log in logs])
+        faq_msg = [
+            SystemMessage(content="You are an expert documentation writer. Given a list of customer Q&As, group them logically and generate a clean, structured FAQ document in Markdown. Do not include introductory text, just the Markdown."),
+            HumanMessage(content=f"Generate FAQ for these Q&As:\n\n{qa_text}")
+        ]
+        faq_res = llm.invoke(faq_msg)
+        faq_content = faq_res.content if hasattr(faq_res, 'content') else str(faq_res)
+
+    # AI-powered Knowledge Gap Detection
+    knowledge_gaps = []
+    if unanswered_logs:
+        gap_questions = "\n".join([f"- {log.question}" for log in unanswered_logs])
+        gap_msg = [
+            SystemMessage(content="You are a knowledge base analyst. Given a list of questions that the AI chatbot could NOT answer, identify the key knowledge topics that are missing. Return a JSON array of short topic strings (max 10 items), like: [\"Enterprise pricing\", \"Refund policy\", ...]. Return ONLY the JSON array, no explanation."),
+            HumanMessage(content=f"These questions went unanswered:\n{gap_questions}")
+        ]
+        try:
+            gap_res = llm.invoke(gap_msg)
+            gap_text = gap_res.content if hasattr(gap_res, 'content') else str(gap_res)
+            import re
+            match = re.search(r'\[.*?\]', gap_text, re.DOTALL)
+            if match:
+                import json as _json
+                knowledge_gaps = _json.loads(match.group())
+        except Exception:
+            knowledge_gaps = [log.question[:60] for log in unanswered_logs[:5]]
+
+    return {"status": "success", "faq": faq_content, "knowledge_gaps": knowledge_gaps}
 
 @app.get("/api/analytics", tags=["Analytics"])
 def get_analytics(
@@ -993,7 +1015,7 @@ def chat_stream_endpoint(request: ChatRequest, req: Request, db: Session = Depen
         if tenant.support_email: business_details += f"Email: {tenant.support_email}\n"
         if tenant.operating_hours: business_details += f"Hours: {tenant.operating_hours}\n"
         
-        system_prompt = f"{base_prompt}\n\n[BUSINESS DETAILS]\n{business_details}\n[PERSONALITY/TONE]\nYou must adopt the following persona/tone: {persona}. Ensure all your responses strictly match this tone.\n\n[LEAD CAPTURE]\nIf the user wants to book an appointment, schedule a service, or get a quote, you MUST ask for their Name, Email, and Phone. Once they provide it, you MUST use the `capture_lead` tool to save their details."
+        system_prompt = f"{base_prompt}\n\n[BUSINESS DETAILS]\n{business_details}\n[PERSONALITY/TONE]\nYou must adopt the following persona/tone: {persona}. Ensure all your responses strictly match this tone.\n\n[LEAD CAPTURE]\nIf the user wants to book an appointment, schedule a service, or get a quote, you MUST ask for their Name, Email, and Phone. Once they provide it, you MUST use the `capture_lead` tool to save their details.\n\n[ESCALATION]\nIf the user is clearly frustrated, repeatedly asks the same question, or explicitly asks to speak to a human, you MUST use the `escalate_to_human` tool with a brief reason."
     else:
         system_prompt = None
 
@@ -1189,3 +1211,23 @@ def delete_document_endpoint(
 # Dummy commit 3 from Antigravity
 # Dummy commit 4 from Antigravity
 # Dummy commit 5 from Antigravity
+
+
+# ── Agent Trace API ─────────────────────────────────────────────────────────
+
+@app.get("/api/agent-trace", tags=["Agent Trace"])
+def get_agent_trace(
+    widget_id: Optional[str] = "default",
+    current_user: TokenData = Depends(get_current_user)
+):
+    """
+    Returns the in-memory agent reasoning trace for a given widget.
+    Shows recent RETRIEVAL, TOOL_CALL, ESCALATION, and GENERATION steps
+    so the dashboard can visualize how the AI agent makes decisions.
+    """
+    traces = get_traces(widget_id)
+    return {
+        "widget_id": widget_id,
+        "trace_count": len(traces),
+        "traces": list(reversed(traces))  # Most recent first
+    }

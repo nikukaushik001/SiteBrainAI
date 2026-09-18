@@ -15,8 +15,32 @@ except ImportError:
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 import json
+import time
+import collections
 from app.database import SessionLocal
 from app.models import AgentBooking, Lead
+
+# ── Agent Trace Store ─────────────────────────────────────────────────────────
+# In-memory circular buffer of agent trace events per widget_id.
+# Keeps the last 50 events per tenant so the dashboard can display live traces.
+agent_trace_store: dict[str, collections.deque] = {}
+
+def emit_trace(widget_id: str, step: str, detail: str, status: str = "info"):
+    """Append a structured trace event for a widget_id."""
+    if widget_id not in agent_trace_store:
+        agent_trace_store[widget_id] = collections.deque(maxlen=50)
+    agent_trace_store[widget_id].append({
+        "ts": time.strftime("%H:%M:%S"),
+        "step": step,        # RETRIEVAL | TOOL_CALL | GENERATION | ESCALATION
+        "detail": detail,
+        "status": status,    # info | success | warning | error
+    })
+
+def get_traces(widget_id: str) -> list:
+    """Return recent trace events for a widget_id as a list."""
+    if widget_id not in agent_trace_store:
+        return []
+    return list(agent_trace_store[widget_id])
 
 
 import csv
@@ -61,9 +85,32 @@ def capture_lead(name: str, email: str, phone: str, widget_id: str) -> str:
         db.add(new_lead)
         db.commit()
         db.close()
+        emit_trace(widget_id, "TOOL_CALL", f"capture_lead → name='{name}', email='{email}' — Lead saved to database.", "success")
         return "Lead captured successfully! Tell the customer we will contact them soon."
     except Exception as e:
+        emit_trace(widget_id, "TOOL_CALL", f"capture_lead FAILED: {str(e)}", "error")
         return f"Failed to capture lead: {str(e)}"
+
+
+@tool
+def escalate_to_human(reason: str, widget_id: str) -> str:
+    """Escalate the conversation to a human agent. Call this ONLY when the user is frustrated, the question cannot be answered from the knowledge base, or the user explicitly requests a human agent."""
+    try:
+        db = SessionLocal()
+        from app.models import ChatSession
+        # Mark the most recent session for this widget as human_active
+        session = db.query(ChatSession).filter(
+            ChatSession.widget_id == widget_id
+        ).order_by(ChatSession.timestamp.desc()).first()
+        if session:
+            session.status = "human_active"
+            db.commit()
+        db.close()
+        emit_trace(widget_id, "ESCALATION", f"escalate_to_human → Reason: '{reason}'. Session flagged for human takeover.", "warning")
+        return "I've flagged this conversation for a human agent. Someone from our team will follow up with you shortly. Is there anything else I can help with in the meantime?"
+    except Exception as e:
+        emit_trace(widget_id, "ESCALATION", f"escalate_to_human FAILED: {str(e)}", "error")
+        return "I wasn't able to connect you to a human agent right now, but our team will reach out to you soon."
 
 def clean_context(text: str) -> str:
     """Strip HTML tags and escape characters that break LangChain template parsing."""
@@ -110,6 +157,8 @@ def ask_question(question: str, widget_id: str = "default", system_prompt: str =
     try:
         docs = []
 
+        emit_trace(widget_id, "RETRIEVAL", f"Querying ChromaDB for: '{question[:80]}...' (widget: {widget_id})", "info")
+
         # ChromaDB requires {"field": {"$eq": value}} format for metadata filtering
         if widget_id and widget_id != "all":
             try:
@@ -134,25 +183,39 @@ def ask_question(question: str, widget_id: str = "default", system_prompt: str =
             doc.metadata.get("source") for doc in docs
             if doc.metadata and "source" in doc.metadata
         ]))
+
+        if docs:
+            src_labels = ", ".join(sources[:3]) or "knowledge base"
+            emit_trace(widget_id, "RETRIEVAL", f"Retrieved {len(docs)} chunks from: {src_labels}", "success")
+        else:
+            emit_trace(widget_id, "RETRIEVAL", "No relevant chunks found in knowledge base — agent will escalate if needed.", "warning")
+
         context_str = format_docs(docs)
+
+        emit_trace(widget_id, "GENERATION", "Invoking LLM with context + tools [capture_lead, escalate_to_human]...", "info")
 
         # Use direct message construction — avoids template curly-brace parsing errors
         messages = build_messages(question, context_str, system_prompt)
-        llm_with_tools = llm.bind_tools([capture_lead])
+        llm_with_tools = llm.bind_tools([capture_lead, escalate_to_human])
         response = llm_with_tools.invoke(messages)
         
         if response.tool_calls:
             for tc in response.tool_calls:
+                args = tc["args"]
+                args["widget_id"] = widget_id
                 if tc["name"] == "capture_lead":
-                    args = tc["args"]
-                    args["widget_id"] = widget_id
                     tool_msg = capture_lead.invoke(args)
-                    messages.append(response)
-                    from langchain_core.messages import ToolMessage
-                    messages.append(ToolMessage(content=tool_msg, tool_call_id=tc["id"]))
+                elif tc["name"] == "escalate_to_human":
+                    tool_msg = escalate_to_human.invoke(args)
+                else:
+                    tool_msg = "Unknown tool called."
+                messages.append(response)
+                from langchain_core.messages import ToolMessage
+                messages.append(ToolMessage(content=tool_msg, tool_call_id=tc["id"]))
             response = llm_with_tools.invoke(messages)
 
         answer = response.content if hasattr(response, 'content') else str(response)
+        emit_trace(widget_id, "GENERATION", f"Response synthesized ({len(answer)} chars). Sentiment analysis running...", "success")
 
         # Quick Sentiment Analysis
         sentiment = "Neutral"
@@ -166,11 +229,13 @@ def ask_question(question: str, widget_id: str = "default", system_prompt: str =
             if "Positive" in raw_sentiment or "positive" in raw_sentiment.lower(): sentiment = "Positive"
             elif "Negative" in raw_sentiment or "negative" in raw_sentiment.lower(): sentiment = "Negative"
             else: sentiment = "Neutral"
+            emit_trace(widget_id, "GENERATION", f"Sentiment classified as: {sentiment}", "info")
         except Exception as e:
             print(f"Sentiment analysis failed: {e}")
 
         return {"answer": answer, "sources": sources, "sentiment": sentiment}
     except Exception as e:
+        emit_trace(widget_id, "GENERATION", f"Error during generation: {str(e)}", "error")
         return {"answer": f"Sorry, I encountered an error: {e}", "sources": [], "sentiment": "Neutral"}
 
 
@@ -206,8 +271,15 @@ def ask_question_stream(question: str, widget_id: str = "default", system_prompt
         ]))
         context_str = format_docs(docs)
 
+        if docs:
+            src_labels = ", ".join(list(set([d.metadata.get('source','?') for d in docs]))[:3])
+            emit_trace(widget_id, "RETRIEVAL", f"Retrieved {len(docs)} chunks from: {src_labels}", "success")
+        else:
+            emit_trace(widget_id, "RETRIEVAL", "No relevant chunks found — agent may escalate.", "warning")
+
         messages = build_messages(question, context_str, system_prompt)
-        llm_with_tools = llm.bind_tools([capture_lead])
+        llm_with_tools = llm.bind_tools([capture_lead, escalate_to_human])
+        emit_trace(widget_id, "GENERATION", "Streaming response via SSE with tools [capture_lead, escalate_to_human]...", "info")
 
         # We will iterate the stream. If the first chunk contains a tool call, 
         # we abort streaming, invoke the tool, and yield the final answer.
@@ -237,16 +309,21 @@ def ask_question_stream(question: str, widget_id: str = "default", system_prompt
             response = llm_with_tools.invoke(messages)
             if hasattr(response, "tool_calls") and response.tool_calls:
                 for tc in response.tool_calls:
+                    args = tc["args"]
+                    args["widget_id"] = widget_id
                     if tc["name"] == "capture_lead":
-                        args = tc["args"]
-                        args["widget_id"] = widget_id
                         tool_msg = capture_lead.invoke(args)
-                        messages.append(response)
-                        from langchain_core.messages import ToolMessage
-                        messages.append(ToolMessage(content=tool_msg, tool_call_id=tc["id"]))
+                    elif tc["name"] == "escalate_to_human":
+                        tool_msg = escalate_to_human.invoke(args)
+                    else:
+                        tool_msg = "Unknown tool."
+                    messages.append(response)
+                    from langchain_core.messages import ToolMessage
+                    messages.append(ToolMessage(content=tool_msg, tool_call_id=tc["id"]))
                 
                 final_res = llm_with_tools.invoke(messages)
                 ans = final_res.content if hasattr(final_res, 'content') else str(final_res)
+                emit_trace(widget_id, "GENERATION", f"Tool response synthesized ({len(ans)} chars).", "success")
                 yield {"token": ans, "done": True, "sources": sources, "full_answer": ans}
                 return
         else:

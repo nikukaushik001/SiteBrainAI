@@ -12,6 +12,7 @@ import ClientsTab from '../components/tabs/ClientsTab';
 import BusinessProfileTab from '../components/tabs/BusinessProfileTab';
 import BillingTab from '../components/tabs/BillingTab';
 import LeadsTab from '../components/tabs/LeadsTab';
+import AgentTraceTab from '../components/tabs/AgentTraceTab';
 import '../App.css';
 
 /**
@@ -34,6 +35,7 @@ function DashboardContent() {
       case 'profile':       return <BusinessProfileTab />;
       case 'billing':       return <BillingTab />;
       case 'leads':         return <LeadsTab />;
+      case 'agent-trace':   return <AgentTraceTab />;
       default:              return <OverviewTab />;
     }
   };
